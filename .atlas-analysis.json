@@ -1,0 +1,213 @@
+{
+  "projectType": "saas",
+  "projectName": "Opik",
+  "projectDescription": "Open-source AI observability, evaluation, and optimization platform for LLM applications and agentic systems.",
+  "theme": "aspen",
+  "primaryColor": "#fcd10f",
+  "lightColor": "#faf3e6",
+  "darkColor": "#d53c3e",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Tracing & Observability",
+            "pages": [
+              "tracing/overview",
+              "tracing/log-traces",
+              "tracing/integrations",
+              "tracing/track-decorator",
+              "tracing/annotate-traces",
+              "tracing/attachments"
+            ]
+          },
+          {
+            "group": "Evaluation & Testing",
+            "pages": [
+              "evaluation/overview",
+              "evaluation/datasets",
+              "evaluation/experiments",
+              "evaluation/metrics",
+              "evaluation/pytest-integration"
+            ]
+          },
+          {
+            "group": "Metrics",
+            "pages": [
+              "metrics/overview",
+              "metrics/llm-as-judge",
+              "metrics/heuristic-metrics",
+              "metrics/custom-metrics"
+            ]
+          },
+          {
+            "group": "Production Features",
+            "pages": [
+              "production/monitoring",
+              "production/dashboards",
+              "production/online-evaluation",
+              "production/feedback-scores"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/prompt-playground",
+              "advanced/agent-optimizer",
+              "advanced/guardrails",
+              "advanced/prompt-management",
+              "advanced/annotation-queues"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/cloud",
+              "deployment/docker-compose",
+              "deployment/kubernetes"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK Reference",
+        "groups": [
+          {
+            "group": "Python SDK",
+            "pages": [
+              "sdk/python/overview",
+              "sdk/python/installation",
+              "sdk/python/configuration",
+              "sdk/python/client",
+              "sdk/python/tracing",
+              "sdk/python/evaluation",
+              "sdk/python/datasets",
+              "sdk/python/experiments"
+            ]
+          },
+          {
+            "group": "TypeScript SDK",
+            "pages": [
+              "sdk/typescript/overview",
+              "sdk/typescript/installation",
+              "sdk/typescript/configuration",
+              "sdk/typescript/client",
+              "sdk/typescript/tracing",
+              "sdk/typescript/evaluation"
+            ]
+          },
+          {
+            "group": "Optimizer SDK",
+            "pages": [
+              "sdk/optimizer/overview",
+              "sdk/optimizer/installation",
+              "sdk/optimizer/agents",
+              "sdk/optimizer/algorithms"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "integrations/openai",
+              "integrations/anthropic",
+              "integrations/gemini",
+              "integrations/bedrock",
+              "integrations/litellm",
+              "integrations/ollama"
+            ]
+          },
+          {
+            "group": "Frameworks",
+            "pages": [
+              "integrations/langchain",
+              "integrations/llama-index",
+              "integrations/haystack",
+              "integrations/dspy",
+              "integrations/crewai",
+              "integrations/autogen"
+            ]
+          },
+          {
+            "group": "Agent Frameworks",
+            "pages": [
+              "integrations/adk",
+              "integrations/openai-agents",
+              "integrations/pydantic-ai",
+              "integrations/smolagents"
+            ]
+          },
+          {
+            "group": "Other Integrations",
+            "pages": [
+              "integrations/overview",
+              "integrations/opentelemetry",
+              "integrations/guardrails-ai"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/authentication",
+              "api/traces",
+              "api/datasets",
+              "api/experiments",
+              "api/feedback-scores",
+              "api/prompts"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Comprehensive LLM tracing with deep context and call logging",
+    "Advanced evaluation framework with datasets and experiments",
+    "LLM-as-a-Judge metrics for hallucination, moderation, and RAG assessment",
+    "Production monitoring with dashboards and online evaluation rules",
+    "Prompt playground and management",
+    "Agent optimizer for automatic prompt and tool optimization",
+    "Guardrails for safe and responsible AI",
+    "50+ integrations with LLM providers and frameworks",
+    "Self-hosted or cloud deployment options",
+    "Python, TypeScript, and OpenTelemetry SDKs"
+  ],
+  "publicApiSurface": [
+    "opik.track - Decorator for tracing functions",
+    "opik.Opik - Main client class",
+    "opik.evaluate - Evaluation framework",
+    "opik.Dataset - Dataset management",
+    "opik.Trace - Trace object",
+    "opik.Span - Span object",
+    "opik.Prompt - Prompt management",
+    "opik.configure - SDK configuration",
+    "opik.evaluation.metrics.Hallucination - LLM judge metric",
+    "opik.evaluation.metrics.AnswerRelevance - RAG metric",
+    "opik.evaluation.metrics.ContextPrecision - RAG metric",
+    "opik.evaluation.metrics.Moderation - Safety metric",
+    "opik.llm_unit - PyTest decorator",
+    "Opik (TypeScript) - TypeScript client",
+    "track (TypeScript) - TypeScript decorator",
+    "REST API endpoints - /v1/private/traces, /v1/private/datasets, /v1/private/experiments"
+  ]
+}
