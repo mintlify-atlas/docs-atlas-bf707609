@@ -1,0 +1,410 @@
+---
+title: "Datasets"
+description: "Create and manage datasets for evaluating your LLM applications"
+---
+
+Datasets in Opik are collections of test cases used for evaluating LLM applications. Each dataset contains items with inputs, expected outputs, and optional metadata.
+
+## Creating a Dataset
+
+### Basic Creation
+
+Create a dataset and add items:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Create a new dataset
+dataset = client.create_dataset(
+    name="customer-support-qa",
+    description="Questions and answers for customer support evaluation"
+)
+
+# Insert items
+dataset.insert([
+    {
+        "input": {"question": "How do I reset my password?"},
+        "expected_output": {"answer": "Click 'Forgot Password' on the login page."}
+    },
+    {
+        "input": {"question": "What are your business hours?"},
+        "expected_output": {"answer": "We're open Monday-Friday, 9am-5pm EST."}
+    }
+])
+```
+
+### Get or Create
+
+Retrieve an existing dataset or create it if it doesn't exist:
+
+```python
+dataset = client.get_or_create_dataset(
+    name="my-dataset",
+    description="My evaluation dataset"
+)
+```
+
+## Dataset Items
+
+Dataset items are flexible dictionaries that can contain any fields:
+
+```python
+item = {
+    "input": {"question": "What is the capital of France?"},
+    "expected_output": {"answer": "Paris"},
+    "metadata": {"category": "geography", "difficulty": "easy"},
+    "context": ["France is a country in Europe."]
+}
+
+dataset.insert([item])
+```
+
+<Note>
+The `input` and `expected_output` fields are commonly used but not required. You can structure items however you need for your use case.
+</Note>
+
+## Importing Data
+
+Opik supports multiple formats for importing data into datasets:
+
+### From JSON
+
+```python
+import json
+
+json_data = json.dumps([
+    {
+        "question": "What is 2+2?",
+        "answer": "4"
+    },
+    {
+        "question": "What is the capital of Spain?",
+        "answer": "Madrid"
+    }
+])
+
+dataset.insert_from_json(
+    json_array=json_data,
+    keys_mapping={
+        "question": "input",
+        "answer": "expected_output"
+    }
+)
+```
+
+### From JSONL File
+
+```python
+dataset.read_jsonl_from_file(
+    file_path="/path/to/data.jsonl",
+    keys_mapping={"query": "input", "response": "expected_output"},
+    ignore_keys=["internal_id", "timestamp"]
+)
+```
+
+### From Pandas DataFrame
+
+```python
+import pandas as pd
+
+df = pd.DataFrame({
+    "question": ["What is AI?", "What is ML?"],
+    "answer": ["Artificial Intelligence", "Machine Learning"],
+    "category": ["definitions", "definitions"]
+})
+
+dataset.insert_from_pandas(
+    dataframe=df,
+    keys_mapping={"question": "input", "answer": "expected_output"}
+)
+```
+
+## Exporting Data
+
+### To Pandas
+
+```python
+df = dataset.to_pandas()
+print(df.head())
+```
+
+### To JSON
+
+```python
+json_str = dataset.to_json()
+print(json_str)
+```
+
+### Get Items as Dictionaries
+
+```python
+# Get all items
+items = dataset.get_items()
+
+# Get limited number of items
+items = dataset.get_items(nb_samples=10)
+
+# Filter items using OQL
+items = dataset.get_items(
+    filter_string='tags contains "production"'
+)
+```
+
+## Filtering with OQL
+
+Opik Query Language (OQL) allows you to filter dataset items:
+
+```python
+# Filter by tags
+items = dataset.get_items(
+    filter_string='tags contains "failed"'
+)
+
+# Filter by data fields (use dot notation)
+items = dataset.get_items(
+    filter_string='data.category = "technical"'
+)
+
+# Filter by creation date
+items = dataset.get_items(
+    filter_string='created_at >= "2024-01-01T00:00:00Z"'
+)
+
+# Combine filters
+items = dataset.get_items(
+    filter_string='tags contains "qa" AND data.difficulty = "hard"'
+)
+```
+
+### Available Filter Columns
+
+- `id`, `source`, `trace_id`, `span_id`: String fields
+- `data.*`: Access nested data fields with dot notation
+- `tags`: List field (use `contains` operator)
+- `created_at`, `last_updated_at`: DateTime fields (ISO 8601 format)
+- `created_by`, `last_updated_by`: String fields
+
+## Updating Items
+
+Update existing dataset items by providing their IDs:
+
+```python
+# Get items first
+items = dataset.get_items()
+
+# Modify them
+for item in items:
+    item["metadata"] = {"updated": True}
+
+# Update in dataset (requires 'id' field)
+dataset.update(items)
+```
+
+<Warning>
+All items passed to `update()` must include an `id` field. This identifies which item to update.
+</Warning>
+
+## Deleting Items
+
+### Delete Specific Items
+
+```python
+# Delete by IDs
+item_ids = ["item-id-1", "item-id-2"]
+dataset.delete(item_ids)
+```
+
+### Clear All Items
+
+```python
+# Remove all items from the dataset
+dataset.clear()
+```
+
+## Dataset Versioning
+
+Datasets automatically create new versions when you insert, update, or delete items:
+
+### Get Current Version
+
+```python
+version_name = dataset.get_current_version_name()
+print(f"Current version: {version_name}")  # e.g., "v3"
+
+version_info = dataset.get_version_info()
+print(f"Version hash: {version_info.version_hash}")
+print(f"Items total: {version_info.items_total}")
+```
+
+### Access Specific Version
+
+```python
+# Get a read-only view of a specific version
+version_v1 = dataset.get_version_view("v1")
+
+# Get items from that version
+items = version_v1.get_items()
+
+# Use in evaluation
+result = opik.evaluate(
+    dataset=version_v1,  # Evaluate against specific version
+    task=my_task,
+    scoring_metrics=metrics
+)
+```
+
+### Version Metadata
+
+```python
+version_info = dataset.get_version_info()
+
+print(f"Version ID: {version_info.id}")
+print(f"Version name: {version_info.version_name}")
+print(f"Version hash: {version_info.version_hash}")
+print(f"Is latest: {version_info.is_latest}")
+print(f"Total items: {version_info.items_total}")
+print(f"Items added: {version_info.items_added}")
+print(f"Items modified: {version_info.items_modified}")
+print(f"Items deleted: {version_info.items_deleted}")
+print(f"Created at: {version_info.created_at}")
+print(f"Created by: {version_info.created_by}")
+```
+
+## Dataset Properties
+
+```python
+# Basic properties
+print(dataset.name)  # Dataset name
+print(dataset.id)  # Dataset ID
+print(dataset.description)  # Description
+print(dataset.dataset_items_count)  # Total item count
+
+# Tags
+tags = dataset.get_tags()
+print(tags)
+```
+
+## Linking Traces to Datasets
+
+You can create dataset items from existing traces:
+
+```python
+from opik.api_objects.dataset.dataset_item import DatasetItem
+
+# Create item with trace reference
+item = DatasetItem(
+    trace_id="trace-123",
+    span_id="span-456",
+    input={"question": "What is AI?"},
+    expected_output={"answer": "Artificial Intelligence"}
+)
+
+dataset.insert([item])
+```
+
+## Best Practices
+
+<Tip>
+**Start Small**: Begin with a small representative dataset (10-50 items) to validate your evaluation setup before scaling up.
+</Tip>
+
+<Tip>
+**Version Control**: Dataset versions are automatic. Use `get_version_view()` to evaluate against specific snapshots.
+</Tip>
+
+<Tip>
+**Structured Data**: Keep a consistent schema across items for easier analysis. Use `metadata` for additional context that doesn't affect evaluation.
+</Tip>
+
+<Tip>
+**Incremental Updates**: Add items incrementally as you discover edge cases or new scenarios to test.
+</Tip>
+
+## Advanced: Evaluation Suites
+
+Datasets can be configured as evaluation suites with item-level evaluators and execution policies:
+
+```python
+from opik.api_objects.dataset.dataset_item import (
+    DatasetItem,
+    EvaluatorItem,
+    ExecutionPolicyItem
+)
+
+item = DatasetItem(
+    input={"question": "What is AI?"},
+    expected_output={"answer": "Artificial Intelligence"},
+    evaluators=[
+        EvaluatorItem(
+            name="accuracy_judge",
+            type="llm_judge",
+            config={"criteria": "factual accuracy"}
+        )
+    ],
+    execution_policy=ExecutionPolicyItem(
+        runs_per_item=3,  # Run 3 times per item
+        pass_threshold=2   # Must pass 2 out of 3 times
+    )
+)
+
+dataset.insert([item])
+```
+
+## Example: Building a QA Dataset
+
+Here's a complete example of creating a question-answering dataset:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Create dataset
+dataset = client.create_dataset(
+    name="product-qa",
+    description="Product knowledge base questions"
+)
+
+# Prepare items
+items = [
+    {
+        "input": {
+            "question": "What is the return policy?",
+            "context": ["Returns accepted within 30 days with receipt."]
+        },
+        "expected_output": {
+            "answer": "You can return items within 30 days with a receipt."
+        },
+        "metadata": {"category": "policy", "priority": "high"}
+    },
+    {
+        "input": {
+            "question": "Do you ship internationally?",
+            "context": ["We ship to over 50 countries worldwide."]
+        },
+        "expected_output": {
+            "answer": "Yes, we ship to over 50 countries."
+        },
+        "metadata": {"category": "shipping", "priority": "medium"}
+    }
+]
+
+# Insert items
+dataset.insert(items)
+
+print(f"Dataset created with {dataset.dataset_items_count} items")
+print(f"Version: {dataset.get_current_version_name()}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Experiments" icon="flask" href="/evaluation/experiments">
+    Learn how to run experiments using your datasets
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="/evaluation/metrics">
+    Explore metrics for scoring dataset items
+  </Card>
+</CardGroup>

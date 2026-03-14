@@ -1,0 +1,621 @@
+---
+title: "Metrics"
+description: "Score and evaluate LLM outputs with built-in and custom metrics"
+---
+
+Metrics in Opik are functions that score the quality of LLM outputs. Opik provides a rich set of built-in metrics for common evaluation tasks and allows you to create custom metrics for your specific needs.
+
+## Built-in Metrics
+
+Opik provides two categories of metrics:
+
+### Heuristic Metrics
+
+Fast, deterministic metrics that don't require LLM calls:
+
+```python
+from opik.evaluation.metrics import (
+    Equals,           # Exact match comparison
+    Contains,         # Check if output contains substring
+    RegexMatch,       # Pattern matching
+    IsJson,           # Validate JSON format
+    LevenshteinRatio, # String similarity
+    BLEU,             # Translation quality
+    ROUGE,            # Summarization quality
+    BERTScore,        # Semantic similarity
+    Sentiment,        # Sentiment analysis
+)
+```
+
+### LLM-as-Judge Metrics
+
+Metrics that use LLMs to evaluate outputs:
+
+```python
+from opik.evaluation.metrics import (
+    Hallucination,           # Detect hallucinations
+    AnswerRelevance,         # Check answer relevance
+    ContextPrecision,        # RAG context quality
+    ContextRecall,           # RAG coverage
+    Moderation,              # Content safety
+    GEval,                   # General-purpose LLM judge
+)
+```
+
+## Using Metrics
+
+### Basic Usage
+
+```python
+import opik
+from opik.evaluation.metrics import Equals, Hallucination
+
+# Create metric instances
+equals_metric = Equals()
+hallucination_metric = Hallucination()
+
+# Use in evaluation
+result = opik.evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[equals_metric, hallucination_metric]
+)
+```
+
+### Metric Configuration
+
+Many metrics accept configuration parameters:
+
+```python
+from opik.evaluation.metrics import Hallucination, GEval
+
+# Configure LLM-based metrics
+hallucination = Hallucination(
+    name="custom_hallucination",  # Custom name for scores
+    track=True  # Track metric execution as spans
+)
+
+# Configure G-Eval with custom criteria
+g_eval = GEval(
+    name="coherence_judge",
+    model="gpt-4",
+    task_introduction="Evaluate response coherence",
+    evaluation_criteria="The response should be logically consistent and well-structured.",
+    evaluation_steps=[
+        "Check if ideas flow logically",
+        "Verify consistent terminology",
+        "Assess overall structure"
+    ]
+)
+```
+
+## Heuristic Metrics
+
+### Equals
+
+Exact match between output and reference:
+
+```python
+from opik.evaluation.metrics import Equals
+
+metric = Equals()
+
+# Use in evaluation with key mapping
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[metric],
+    scoring_key_mapping={
+        "output": "model_response",
+        "reference": "expected_output"
+    }
+)
+```
+
+### Contains
+
+Check if output contains expected substring:
+
+```python
+from opik.evaluation.metrics import Contains
+
+metric = Contains()
+
+# Expects 'output' and 'reference' keys
+# Returns 1.0 if output contains reference, 0.0 otherwise
+```
+
+### RegexMatch
+
+Pattern matching with regular expressions:
+
+```python
+from opik.evaluation.metrics import RegexMatch
+
+metric = RegexMatch()
+
+# Expects 'output' and 'regex_pattern' keys
+# Returns 1.0 if pattern matches, 0.0 otherwise
+```
+
+### IsJson
+
+Validate JSON format:
+
+```python
+from opik.evaluation.metrics import IsJson
+
+metric = IsJson()
+
+# Expects 'output' key
+# Returns 1.0 if valid JSON, 0.0 otherwise
+```
+
+### BERTScore
+
+Semantic similarity using BERT embeddings:
+
+```python
+from opik.evaluation.metrics import BERTScore
+
+metric = BERTScore()
+
+# Expects 'output' and 'reference' keys
+# Returns F1 score between 0.0 and 1.0
+```
+
+### LevenshteinRatio
+
+String edit distance similarity:
+
+```python
+from opik.evaluation.metrics import LevenshteinRatio
+
+metric = LevenshteinRatio()
+
+# Expects 'output' and 'reference' keys
+# Returns similarity ratio between 0.0 and 1.0
+```
+
+## LLM-as-Judge Metrics
+
+### Hallucination
+
+Detect hallucinations in outputs:
+
+```python
+from opik.evaluation.metrics import Hallucination
+
+metric = Hallucination()
+
+# Expects 'input', 'output', and 'context' keys
+# Returns 0.0 for hallucination, 1.0 for factual
+result = opik.evaluate(
+    dataset=dataset,
+    task=rag_task,
+    scoring_metrics=[metric]
+)
+```
+
+### AnswerRelevance
+
+Evaluate if the answer addresses the question:
+
+```python
+from opik.evaluation.metrics import AnswerRelevance
+
+metric = AnswerRelevance(model="gpt-4")
+
+# Expects 'input' and 'output' keys
+# Returns relevance score between 0.0 and 1.0
+```
+
+### ContextPrecision
+
+Evaluate RAG context quality:
+
+```python
+from opik.evaluation.metrics import ContextPrecision
+
+metric = ContextPrecision()
+
+# Expects 'input', 'output', and 'context' keys
+# Returns precision score between 0.0 and 1.0
+```
+
+### ContextRecall
+
+Measure if context covers the answer:
+
+```python
+from opik.evaluation.metrics import ContextRecall
+
+metric = ContextRecall()
+
+# Expects 'input', 'context', and 'expected_output' keys
+# Returns recall score between 0.0 and 1.0
+```
+
+### Moderation
+
+Detect unsafe or inappropriate content:
+
+```python
+from opik.evaluation.metrics import Moderation
+
+metric = Moderation()
+
+# Expects 'input' or 'output' key
+# Returns 1.0 for safe content, 0.0 for unsafe
+```
+
+### GEval
+
+General-purpose LLM judge with custom criteria:
+
+```python
+from opik.evaluation.metrics import GEval
+
+metric = GEval(
+    name="helpfulness",
+    task_introduction="You are evaluating the helpfulness of responses.",
+    evaluation_criteria="The response should directly address the user's question and provide actionable information.",
+    evaluation_steps=[
+        "Identify the main question or request",
+        "Check if the response addresses it directly",
+        "Verify actionable information is provided"
+    ],
+    model="gpt-4"
+)
+
+# Use in evaluation
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[metric]
+)
+```
+
+## Scoring Functions
+
+Scoring functions are lightweight alternatives to metrics that accept predefined parameters:
+
+```python
+from opik.evaluation.metrics import score_result
+
+def my_scorer(
+    dataset_item: dict,
+    task_outputs: dict,
+    **ignored_kwargs
+) -> score_result.ScoreResult:
+    """Custom scoring function."""
+    reference = dataset_item["expected_output"]
+    prediction = task_outputs["output"]
+    
+    # Your scoring logic
+    score = 1.0 if reference == prediction else 0.0
+    
+    return score_result.ScoreResult(
+        name="my_custom_score",
+        value=score,
+        reason="Match" if score == 1.0 else "No match"
+    )
+
+# Use in evaluation
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_functions=[my_scorer]  # Note: scoring_functions, not scoring_metrics
+)
+```
+
+### Scoring Function Parameters
+
+Scoring functions automatically receive:
+
+- `dataset_item`: Dictionary with the dataset item content
+- `task_outputs`: Dictionary with the task's output
+- `task_span`: Span data from task execution (optional)
+
+```python
+from opik.message_processing.emulation import models
+
+def scorer_with_span(
+    dataset_item: dict,
+    task_outputs: dict,
+    task_span: models.SpanModel,
+    **ignored_kwargs
+) -> score_result.ScoreResult:
+    """Scorer that uses task execution data."""
+    duration = task_span.end_time - task_span.start_time
+    
+    # Penalize slow responses
+    score = 1.0 if duration < 1000 else 0.5  # milliseconds
+    
+    return score_result.ScoreResult(
+        name="latency_score",
+        value=score,
+        reason=f"Took {duration}ms"
+    )
+```
+
+## Creating Custom Metrics
+
+### Extend BaseMetric
+
+Create reusable metric classes:
+
+```python
+from opik.evaluation.metrics import base_metric, score_result
+from typing import Any
+
+class ContainsKeyword(base_metric.BaseMetric):
+    """Check if output contains a specific keyword."""
+    
+    def __init__(
+        self,
+        keyword: str,
+        name: str = "contains_keyword",
+        track: bool = True
+    ):
+        super().__init__(name=name, track=track)
+        self.keyword = keyword.lower()
+    
+    def score(
+        self,
+        output: str,
+        **ignored_kwargs: Any
+    ) -> score_result.ScoreResult:
+        """Score based on keyword presence."""
+        contains = self.keyword in output.lower()
+        
+        return score_result.ScoreResult(
+            name=self.name,
+            value=1.0 if contains else 0.0,
+            reason=f"Keyword '{self.keyword}' {'found' if contains else 'not found'}"
+        )
+
+# Use the custom metric
+metric = ContainsKeyword(keyword="recommendation")
+
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[metric]
+)
+```
+
+### Async Metrics
+
+Support async scoring:
+
+```python
+import asyncio
+from opik.evaluation.metrics import base_metric, score_result
+
+class AsyncMetric(base_metric.BaseMetric):
+    async def ascore(self, output: str, **kwargs) -> score_result.ScoreResult:
+        """Async scoring implementation."""
+        # Async operations here
+        await asyncio.sleep(0.1)
+        
+        return score_result.ScoreResult(
+            name=self.name,
+            value=1.0
+        )
+```
+
+## Score Results
+
+All metrics return `ScoreResult` objects:
+
+```python
+from opik.evaluation.metrics import score_result
+
+result = score_result.ScoreResult(
+    name="my_metric",
+    value=0.85,
+    reason="The output was mostly accurate but missed one detail.",
+    metadata={"checked_facts": 10, "correct_facts": 9}
+)
+
+print(result.name)      # "my_metric"
+print(result.value)     # 0.85
+print(result.reason)    # Optional explanation
+print(result.metadata)  # Optional additional data
+```
+
+## Key Mapping
+
+Map dataset and task output keys to metric expectations:
+
+```python
+from opik.evaluation.metrics import Equals, Hallucination
+
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[Equals(), Hallucination()],
+    scoring_key_mapping={
+        # Rename keys
+        "output": "model_response",
+        "reference": "expected_answer",
+        
+        # Extract nested values
+        "input": lambda x: x["question"]["text"],
+        
+        # Transform values
+        "context": lambda x: x.get("retrieved_docs", [])
+    }
+)
+```
+
+<Info>
+Key mapping applies to both dataset items and task outputs. Use callables for complex transformations.
+</Info>
+
+## Mixing Metrics and Scorers
+
+Combine metrics and scoring functions:
+
+```python
+from opik.evaluation.metrics import Equals, Hallucination
+
+def custom_scorer(dataset_item, task_outputs):
+    # Custom logic
+    return score_result.ScoreResult(
+        name="custom",
+        value=1.0
+    )
+
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[Equals(), Hallucination()],
+    scoring_functions=[custom_scorer]
+)
+```
+
+## Model Configuration for LLM Metrics
+
+Specify which model to use for LLM-based metrics:
+
+```python
+from opik.evaluation.metrics import Hallucination, GEval
+
+# Default model (usually gpt-3.5-turbo)
+hallucination = Hallucination()
+
+# Specify model explicitly
+hallucination_gpt4 = Hallucination(model="gpt-4")
+
+# Use different models for different metrics
+metrics = [
+    Hallucination(model="gpt-3.5-turbo"),
+    GEval(model="gpt-4", name="quality"),
+]
+```
+
+## Tracking Metrics
+
+Metrics can be tracked as spans in Opik:
+
+```python
+from opik.evaluation.metrics import Hallucination
+
+# Track metric execution
+metric = Hallucination(
+    track=True,
+    project_name="my-evaluations"
+)
+
+# Disable tracking
+metric = Hallucination(track=False)
+```
+
+<Tip>
+Tracking is useful for debugging metric behavior but adds overhead. Disable for large-scale evaluations.
+</Tip>
+
+## Example: Multi-Metric Evaluation
+
+```python
+import opik
+from opik.evaluation.metrics import (
+    Equals,
+    Hallucination,
+    ContextPrecision,
+    BERTScore,
+    score_result
+)
+
+# Initialize client and dataset
+client = opik.Opik()
+dataset = client.get_dataset("rag-qa")
+
+# Define task
+def rag_task(item):
+    question = item["input"]["question"]
+    context = item["input"]["context"]
+    
+    # Your RAG logic here
+    answer = my_rag_system(question, context)
+    
+    return {
+        "output": answer,
+        "context": context
+    }
+
+# Custom scorer for answer length
+def length_scorer(
+    task_outputs: dict,
+    **ignored_kwargs
+) -> score_result.ScoreResult:
+    length = len(task_outputs["output"])
+    # Prefer answers between 50-200 chars
+    score = 1.0 if 50 <= length <= 200 else 0.5
+    
+    return score_result.ScoreResult(
+        name="length_score",
+        value=score,
+        reason=f"Answer length: {length} chars"
+    )
+
+# Run evaluation with multiple metrics
+result = opik.evaluate(
+    dataset=dataset,
+    task=rag_task,
+    scoring_metrics=[
+        Equals(),
+        Hallucination(model="gpt-4"),
+        ContextPrecision(),
+        BERTScore()
+    ],
+    scoring_functions=[length_scorer],
+    scoring_key_mapping={
+        "reference": "expected_output"
+    },
+    experiment_name="rag-multi-metric"
+)
+
+# Analyze results
+scores = result.aggregate_evaluation_scores()
+
+for metric_name, stats in scores.items():
+    print(f"\n{metric_name}:")
+    print(f"  Mean: {stats.mean:.3f}")
+    print(f"  Std: {stats.std:.3f}")
+```
+
+## Best Practices
+
+<Tip>
+**Start Simple**: Begin with heuristic metrics like `Equals` before adding complex LLM-based metrics.
+</Tip>
+
+<Tip>
+**Mix Approaches**: Combine fast heuristic metrics with selective LLM-based evaluation for cost-effective quality assessment.
+</Tip>
+
+<Tip>
+**Name Metrics**: Use descriptive names when creating multiple instances of the same metric type.
+</Tip>
+
+<Tip>
+**Key Mapping**: Use `scoring_key_mapping` to keep your code clean instead of restructuring task outputs.
+</Tip>
+
+<Tip>
+**Custom Metrics**: Create reusable metric classes for domain-specific evaluation criteria.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Experiments" icon="flask" href="/evaluation/experiments">
+    Track and compare evaluation results
+  </Card>
+  <Card title="Datasets" icon="database" href="/evaluation/datasets">
+    Build comprehensive test datasets
+  </Card>
+</CardGroup>

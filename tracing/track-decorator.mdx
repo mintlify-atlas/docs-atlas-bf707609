@@ -1,0 +1,602 @@
+---
+title: "@track Decorator"
+description: "Use the @track decorator to automatically trace functions in your LLM application"
+---
+
+The `@track` decorator is the simplest way to add tracing to your Python functions. It automatically creates traces and spans, captures inputs and outputs, and handles errors.
+
+## Basic Usage
+
+### Simple Function Tracking
+
+Decorate any function to start tracking:
+
+```python
+from opik import track
+
+@track
+def greet(name):
+    return f"Hello, {name}!"
+
+result = greet("Alice")
+# Creates a trace with input {"name": "Alice"} and output "Hello, Alice!"
+```
+
+### Automatic Hierarchy
+
+Nested decorated functions automatically form a trace hierarchy:
+
+```python
+from opik import track
+
+@track
+def retrieve_context(query):
+    # Retrieval logic
+    return ["doc1", "doc2"]
+
+@track
+def generate_response(query, context):
+    # Generation logic
+    return f"Answer based on {context}"
+
+@track
+def rag_pipeline(query):
+    # This creates the root trace
+    context = retrieve_context(query)  # Creates child span
+    response = generate_response(query, context)  # Creates another child span
+    return response
+
+result = rag_pipeline("What is Opik?")
+# Creates: 1 trace (rag_pipeline) with 2 child spans (retrieve_context, generate_response)
+```
+
+## Decorator Parameters
+
+The `@track` decorator accepts several parameters to customize tracing behavior.
+
+### name
+
+Customize the span name:
+
+```python
+from opik import track
+
+@track(name="custom-span-name")
+def my_function():
+    return "result"
+```
+
+### type
+
+Specify the span type (`general`, `llm`, `tool`, `guardrail`):
+
+```python
+from opik import track
+
+@track(type="llm")
+def call_openai(prompt):
+    # LLM call
+    return response
+
+@track(type="tool")
+def search_database(query):
+    # Database search
+    return results
+
+@track(type="guardrail")
+def validate_content(text):
+    # Content validation
+    return is_safe
+```
+
+### tags
+
+Add tags for categorization:
+
+```python
+from opik import track
+
+@track(tags=["production", "v2", "critical"])
+def important_function():
+    return "result"
+```
+
+### metadata
+
+Add custom metadata:
+
+```python
+from opik import track
+
+@track(metadata={"version": "1.0", "environment": "production"})
+def my_function():
+    return "result"
+```
+
+### capture_input and capture_output
+
+Control whether inputs and outputs are captured:
+
+```python
+from opik import track
+
+@track(capture_input=False)  # Don't capture inputs
+def process_sensitive_data(api_key, data):
+    return result
+
+@track(capture_output=False)  # Don't capture outputs
+def generate_secret():
+    return secret_value
+
+@track(capture_input=False, capture_output=False)  # Capture neither
+def fully_private_function():
+    return private_result
+```
+
+### ignore_arguments
+
+Exclude specific arguments from being captured:
+
+```python
+from opik import track
+
+@track(ignore_arguments=["api_key", "password"])
+def api_call(query, api_key, password):
+    # api_key and password won't appear in trace input
+    return make_request(query, api_key, password)
+```
+
+### project_name
+
+Specify which project to log traces to:
+
+```python
+from opik import track
+
+@track(project_name="production-chatbot")
+def handle_user_query(query):
+    return response
+```
+
+### flush
+
+Flush data immediately after the function completes:
+
+```python
+from opik import track
+
+@track(flush=True)
+def critical_operation():
+    # Data is sent immediately when this completes
+    return result
+```
+
+## Complete Example
+
+Combining multiple parameters:
+
+```python
+from opik import track
+
+@track(
+    name="rag-retrieval",
+    type="tool",
+    tags=["production", "rag"],
+    metadata={"version": "2.0", "index": "main"},
+    ignore_arguments=["api_key"],
+    project_name="rag-system"
+)
+def retrieve_documents(query, api_key, top_k=5):
+    # Retrieval logic
+    return documents
+```
+
+## Updating Traces and Spans
+
+Use `opik_context` to update the current trace or span from within a tracked function:
+
+```python
+from opik import track, opik_context
+
+@track
+def process_query(query):
+    # Update current span
+    opik_context.update_current_span(
+        tags=["processed"],
+        metadata={"query_length": len(query)}
+    )
+    
+    result = expensive_operation(query)
+    
+    # Update current trace
+    opik_context.update_current_trace(
+        tags=["completed"],
+        metadata={"result_count": len(result)}
+    )
+    
+    return result
+```
+
+### Update Current Span
+
+```python
+from opik import track, opik_context
+
+@track(type="llm")
+def call_llm(prompt):
+    response = llm.complete(prompt)
+    
+    # Update with LLM metadata
+    opik_context.update_current_span(
+        output={"response": response.text},
+        usage={
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens
+        },
+        model="gpt-4",
+        provider="openai",
+        metadata={"temperature": 0.7}
+    )
+    
+    return response.text
+```
+
+### Update Current Trace
+
+```python
+from opik import track, opik_context
+
+@track
+def multi_step_workflow(input_data):
+    results = []
+    
+    for step in steps:
+        result = process_step(step)
+        results.append(result)
+        
+        # Update trace with progress
+        opik_context.update_current_trace(
+            metadata={"completed_steps": len(results)}
+        )
+    
+    return results
+```
+
+## Working with Async Functions
+
+The `@track` decorator works with async functions:
+
+```python
+from opik import track
+import asyncio
+
+@track
+async def async_llm_call(prompt):
+    # Async LLM call
+    await asyncio.sleep(1)
+    return "response"
+
+@track
+async def async_pipeline(query):
+    result1 = await async_llm_call(f"Step 1: {query}")
+    result2 = await async_llm_call(f"Step 2: {result1}")
+    return result2
+
+asyncio.run(async_pipeline("What is AI?"))
+```
+
+## Generator Functions
+
+Track generator functions (both sync and async):
+
+```python
+from opik import track
+
+@track
+def generate_items():
+    for i in range(5):
+        yield i
+
+@track
+async def async_generate_items():
+    for i in range(5):
+        await asyncio.sleep(0.1)
+        yield i
+
+# Use them normally
+for item in generate_items():
+    print(item)
+
+async for item in async_generate_items():
+    print(item)
+```
+
+## Error Handling
+
+The decorator automatically captures exceptions:
+
+```python
+from opik import track
+
+@track
+def failing_function():
+    raise ValueError("Something went wrong")
+
+try:
+    failing_function()
+except ValueError:
+    # Error info is automatically added to the trace
+    pass
+```
+
+You can also add custom error handling:
+
+```python
+from opik import track, opik_context
+
+@track
+def robust_function(data):
+    try:
+        return risky_operation(data)
+    except Exception as e:
+        opik_context.update_current_span(
+            metadata={"error_handled": True, "error_type": type(e).__name__}
+        )
+        return fallback_value
+```
+
+## Using with Integrations
+
+Combine `@track` with Opik integrations:
+
+```python
+import opik
+from opik import track
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+@track(type="tool")
+def retrieve_documents(query):
+    # Custom retrieval logic
+    return ["doc1", "doc2"]
+
+@track
+def rag_pipeline(question):
+    # Retrieval (custom tracked function)
+    docs = retrieve_documents(question)
+    
+    # Generation (automatically tracked via integration)
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": f"Context: {docs}"},
+            {"role": "user", "content": question}
+        ]
+    )
+    
+    return response.choices[0].message.content
+
+result = rag_pipeline("What is Opik?")
+```
+
+## Flushing Tracked Data
+
+By default, Opik batches traces before sending. To ensure data is sent:
+
+```python
+from opik import track, flush_tracker
+
+@track
+def my_function():
+    return "result"
+
+my_function()
+my_function()
+my_function()
+
+# Flush all tracked data
+flush_tracker()
+```
+
+Or use the `flush` parameter:
+
+```python
+from opik import track
+
+@track(flush=True)
+def my_function():
+    # Data is flushed immediately after this function
+    return "result"
+```
+
+## Controlling Tracing
+
+Enable or disable tracing at runtime:
+
+```python
+from opik import track, set_tracing_active, is_tracing_active
+
+@track
+def my_function():
+    return "result"
+
+# Check if tracing is active
+print(is_tracing_active())  # True
+
+# Disable tracing
+set_tracing_active(False)
+my_function()  # Not traced
+
+# Re-enable tracing
+set_tracing_active(True)
+my_function()  # Traced again
+```
+
+## Advanced: Getting Current Context
+
+Access the current trace and span data:
+
+```python
+from opik import track, opik_context
+
+@track
+def my_function():
+    # Get current span data
+    span_data = opik_context.get_current_span_data()
+    if span_data:
+        print(f"Span ID: {span_data.id}")
+        print(f"Trace ID: {span_data.trace_id}")
+    
+    # Get current trace data
+    trace_data = opik_context.get_current_trace_data()
+    if trace_data:
+        print(f"Trace ID: {trace_data.id}")
+    
+    return "result"
+```
+
+## Complete RAG Example
+
+Here's a complete RAG pipeline using `@track`:
+
+```python
+import opik
+from opik import track, opik_context, flush_tracker
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+@track(type="tool", name="document-retrieval")
+def retrieve_documents(query, top_k=3):
+    """Retrieve relevant documents for a query."""
+    # Simulated retrieval
+    documents = [
+        "Opik is an open-source LLM observability platform.",
+        "Opik helps you track, evaluate, and monitor LLM applications.",
+        "Opik integrates with OpenAI, Anthropic, and other providers."
+    ]
+    
+    opik_context.update_current_span(
+        metadata={"num_documents": len(documents), "top_k": top_k}
+    )
+    
+    return documents[:top_k]
+
+@track(type="tool", name="rerank-documents")
+def rerank_documents(query, documents):
+    """Rerank documents based on relevance."""
+    # Simulated reranking
+    opik_context.update_current_span(
+        metadata={"reranking_model": "custom-reranker-v1"}
+    )
+    return documents  # Already ranked in this example
+
+@track(type="guardrail", name="content-filter")
+def filter_response(response):
+    """Filter response for inappropriate content."""
+    # Simulated filtering
+    is_safe = True
+    
+    opik_context.update_current_span(
+        output={"is_safe": is_safe, "filtered_response": response},
+        metadata={"filter_version": "v2"}
+    )
+    
+    return response if is_safe else "[Content filtered]"
+
+@track(
+    name="rag-pipeline",
+    tags=["production", "rag"],
+    metadata={"version": "2.0"},
+    project_name="customer-support"
+)
+def rag_pipeline(question):
+    """Complete RAG pipeline."""
+    # Step 1: Retrieve documents
+    documents = retrieve_documents(question)
+    
+    # Step 2: Rerank documents
+    ranked_docs = rerank_documents(question, documents)
+    
+    # Step 3: Generate response
+    context = "\n".join(ranked_docs)
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": f"Use this context to answer: {context}"},
+            {"role": "user", "content": question}
+        ],
+        temperature=0.7
+    )
+    
+    answer = response.choices[0].message.content
+    
+    # Step 4: Filter response
+    safe_answer = filter_response(answer)
+    
+    # Update trace with final metadata
+    opik_context.update_current_trace(
+        tags=["completed"],
+        metadata={
+            "num_documents_used": len(ranked_docs),
+            "answer_length": len(safe_answer)
+        }
+    )
+    
+    return safe_answer
+
+# Run the pipeline
+result = rag_pipeline("What is Opik?")
+print(result)
+
+# Ensure all traces are sent
+flush_tracker()
+```
+
+## Best Practices
+
+<Card title="Use descriptive names" icon="tag">
+  Give spans meaningful names that describe what they do, not just the function name.
+</Card>
+
+<Card title="Set appropriate types" icon="layer-group">
+  Use `llm`, `tool`, or `guardrail` types instead of `general` when applicable for better visualization.
+</Card>
+
+<Card title="Add context with metadata" icon="database">
+  Include relevant metadata that helps debug and understand behavior.
+</Card>
+
+<Card title="Use tags for filtering" icon="filter">
+  Add tags like `production`, `staging`, version numbers for easy filtering in the UI.
+</Card>
+
+<Card title="Protect sensitive data" icon="shield">
+  Use `ignore_arguments` or `capture_input=False` for functions handling secrets.
+</Card>
+
+<Card title="Flush when needed" icon="upload">
+  Use `flush=True` or call `flush_tracker()` for critical operations or before process exit.
+</Card>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Log Traces" icon="file-lines" href="/tracing/log-traces">
+    Learn manual trace creation
+  </Card>
+  
+  <Card title="Annotate Traces" icon="pen" href="/tracing/annotate-traces">
+    Add feedback scores and annotations
+  </Card>
+  
+  <Card title="Attachments" icon="paperclip" href="/tracing/attachments">
+    Attach files to traces and spans
+  </Card>
+  
+  <Card title="Integrations" icon="plug" href="/tracing/integrations">
+    Use automatic tracing with integrations
+  </Card>
+</CardGroup>

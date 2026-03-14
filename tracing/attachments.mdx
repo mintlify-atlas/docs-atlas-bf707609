@@ -1,0 +1,533 @@
+---
+title: "Attachments"
+description: "Attach files, images, and other media to traces and spans for enhanced observability"
+---
+
+Opik allows you to attach files, images, videos, and other media to traces and spans. This is useful for:
+
+- Storing input/output images from vision models
+- Saving audio files from speech recognition
+- Attaching screenshots for debugging
+- Preserving generated artifacts
+- Storing large data that doesn't fit in metadata
+
+## Creating Attachments
+
+Use the `Attachment` class to create attachments:
+
+```python
+from opik import Attachment
+
+# From a file path
+attachment = Attachment(
+    data="/path/to/image.png",
+    file_name="input_image.png"
+)
+
+# From bytes
+with open("/path/to/file.pdf", "rb") as f:
+    attachment = Attachment(
+        data=f.read(),
+        file_name="document.pdf",
+        content_type="application/pdf"
+    )
+
+# From base64 string
+import base64
+with open("/path/to/image.jpg", "rb") as f:
+    base64_data = base64.b64encode(f.read()).decode()
+    attachment = Attachment(
+        data=base64_data,
+        file_name="photo.jpg",
+        content_type="image/jpeg"
+    )
+```
+
+## Attachment Parameters
+
+<ParamField path="data" type="str | bytes" required>
+  The file data. Can be:
+  - A file path (str) to an existing file
+  - A base64-encoded string (str)
+  - Raw bytes content
+</ParamField>
+
+<ParamField path="file_name" type="str">
+  Custom filename for the attachment. If not provided, the original filename will be used (for file paths).
+</ParamField>
+
+<ParamField path="content_type" type="str">
+  MIME type of the data (e.g., "image/png", "application/pdf"). If not specified, it will be inferred from the file.
+</ParamField>
+
+<ParamField path="create_temp_copy" type="bool" default="True">
+  If True, creates a temporary copy of the file before upload. This ensures the file remains available even if the original is deleted. The temp file is deleted after upload.
+</ParamField>
+
+## Adding Attachments to Traces
+
+### During Trace Creation
+
+```python
+import opik
+from opik import Attachment
+
+client = opik.Opik()
+
+# Create attachments
+input_image = Attachment(
+    data="/path/to/input.png",
+    file_name="input.png"
+)
+
+output_image = Attachment(
+    data="/path/to/output.png",
+    file_name="output.png"
+)
+
+# Create trace with attachments
+trace = client.trace(
+    name="image-processing",
+    input={"description": "Process image"},
+    output={"status": "success"},
+    attachments=[input_image, output_image]
+)
+
+trace.end()
+```
+
+### Using opik_context
+
+Add attachments from within tracked functions:
+
+```python
+from opik import track, opik_context, Attachment
+
+@track
+def process_image(image_path):
+    # Process the image
+    result_path = transform_image(image_path)
+    
+    # Attach both input and output images
+    opik_context.update_current_trace(
+        attachments=[
+            Attachment(data=image_path, file_name="input.png"),
+            Attachment(data=result_path, file_name="output.png")
+        ]
+    )
+    
+    return result_path
+```
+
+### Updating Traces
+
+Add attachments to existing traces:
+
+```python
+import opik
+from opik import Attachment
+
+client = opik.Opik()
+
+trace = client.trace(name="my-trace")
+
+# Do work...
+generated_file = generate_report()
+
+# Add attachment
+trace.update(
+    attachments=[Attachment(
+        data=generated_file,
+        file_name="report.pdf",
+        content_type="application/pdf"
+    )]
+)
+
+trace.end()
+```
+
+## Adding Attachments to Spans
+
+### During Span Creation
+
+```python
+import opik
+from opik import Attachment
+
+client = opik.Opik()
+
+trace = client.trace(name="vision-pipeline")
+
+# Create span with attachment
+span = trace.span(
+    name="image-classification",
+    type="llm",
+    input={"task": "classify"},
+    attachments=[Attachment(
+        data="/path/to/image.jpg",
+        file_name="input_image.jpg"
+    )]
+)
+
+span.end()
+trace.end()
+```
+
+### Using opik_context
+
+```python
+from opik import track, opik_context, Attachment
+
+@track(type="llm")
+def analyze_image(image_path):
+    # Attach the input image
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=image_path,
+            file_name="analyzed_image.png"
+        )]
+    )
+    
+    result = vision_model.analyze(image_path)
+    return result
+```
+
+## Common Use Cases
+
+### Vision Models
+
+Attach input and output images:
+
+```python
+import opik
+from opik import track, opik_context, Attachment
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+@track(type="llm")
+def describe_image(image_path):
+    # Attach input image
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=image_path,
+            file_name="input_image.jpg",
+            content_type="image/jpeg"
+        )]
+    )
+    
+    # Process with vision model
+    with open(image_path, "rb") as img:
+        import base64
+        base64_image = base64.b64encode(img.read()).decode()
+    
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "What's in this image?"},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}
+                    }
+                ]
+            }
+        ]
+    )
+    
+    return response.choices[0].message.content
+```
+
+### Audio Processing
+
+Attach audio files:
+
+```python
+from opik import track, opik_context, Attachment
+
+@track(type="tool")
+def transcribe_audio(audio_path):
+    # Attach the audio file
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=audio_path,
+            file_name="audio.mp3",
+            content_type="audio/mpeg"
+        )]
+    )
+    
+    transcript = speech_to_text(audio_path)
+    return transcript
+```
+
+### Document Processing
+
+Attach PDF documents:
+
+```python
+from opik import track, opik_context, Attachment
+
+@track(type="tool")
+def extract_text_from_pdf(pdf_path):
+    # Attach the PDF
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=pdf_path,
+            file_name="document.pdf",
+            content_type="application/pdf"
+        )]
+    )
+    
+    text = pdf_extractor.extract(pdf_path)
+    return text
+```
+
+### Generated Artifacts
+
+Store generated files:
+
+```python
+from opik import track, opik_context, Attachment
+import matplotlib.pyplot as plt
+import io
+
+@track
+def create_visualization(data):
+    # Create plot
+    plt.figure(figsize=(10, 6))
+    plt.plot(data)
+    
+    # Save to bytes
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    
+    # Attach the plot
+    opik_context.update_current_trace(
+        attachments=[Attachment(
+            data=buf.read(),
+            file_name="visualization.png",
+            content_type="image/png"
+        )]
+    )
+    
+    plt.close()
+    return "Visualization created"
+```
+
+### Screenshots for Debugging
+
+Capture screenshots during execution:
+
+```python
+from opik import track, opik_context, Attachment
+import pyautogui
+
+@track
+def automated_task():
+    try:
+        # Perform task
+        perform_automation()
+    except Exception as e:
+        # Capture screenshot on error
+        screenshot = pyautogui.screenshot()
+        screenshot_path = "/tmp/error_screenshot.png"
+        screenshot.save(screenshot_path)
+        
+        opik_context.update_current_trace(
+            attachments=[Attachment(
+                data=screenshot_path,
+                file_name="error_screenshot.png"
+            )]
+        )
+        raise
+```
+
+## Multiple Attachments
+
+Add multiple attachments to a single trace or span:
+
+```python
+from opik import track, opik_context, Attachment
+
+@track
+def process_media(image_path, audio_path, video_path):
+    attachments = [
+        Attachment(data=image_path, file_name="image.jpg"),
+        Attachment(data=audio_path, file_name="audio.mp3"),
+        Attachment(data=video_path, file_name="video.mp4")
+    ]
+    
+    opik_context.update_current_trace(attachments=attachments)
+    
+    # Process media files
+    result = process_all_media(image_path, audio_path, video_path)
+    return result
+```
+
+## Attachment Best Practices
+
+<Card title="Use descriptive filenames" icon="file-signature">
+  Give attachments meaningful names that describe their content and purpose.
+</Card>
+
+<Card title="Specify content types" icon="file-code">
+  Always specify the `content_type` parameter for non-standard file types to ensure proper rendering.
+</Card>
+
+<Card title="Consider file sizes" icon="scale-balanced">
+  Be mindful of attachment sizes, especially when attaching many files. Large attachments may impact performance.
+</Card>
+
+<Card title="Clean up temporary files" icon="trash">
+  Use `create_temp_copy=True` (default) when working with files that might be deleted before upload completes.
+</Card>
+
+<Card title="Attach at the right level" icon="layer-group">
+  Attach files to spans for step-specific artifacts, and to traces for overall inputs/outputs.
+</Card>
+
+## Supported File Types
+
+Opik supports any file type, but common types include:
+
+- **Images**: PNG, JPEG, GIF, WebP, SVG
+- **Documents**: PDF, DOCX, TXT, MD
+- **Audio**: MP3, WAV, OGG, M4A
+- **Video**: MP4, WebM, MOV
+- **Data**: JSON, CSV, XML, YAML
+- **Archives**: ZIP, TAR, GZ
+
+## Complete Example
+
+```python
+import opik
+from opik import track, opik_context, Attachment
+import matplotlib.pyplot as plt
+import io
+import json
+
+@track(type="tool")
+def analyze_data(data_file):
+    """Analyze data and attach various artifacts."""
+    # Attach input data file
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=data_file,
+            file_name="input_data.json",
+            content_type="application/json"
+        )]
+    )
+    
+    # Load and analyze data
+    with open(data_file) as f:
+        data = json.load(f)
+    
+    analysis_results = perform_analysis(data)
+    return analysis_results
+
+@track(type="tool")
+def create_visualization(results):
+    """Create visualizations from results."""
+    # Create plot
+    plt.figure(figsize=(12, 8))
+    plt.bar(results.keys(), results.values())
+    plt.title("Analysis Results")
+    
+    # Save to bytes
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=300)
+    buf.seek(0)
+    image_bytes = buf.read()
+    plt.close()
+    
+    # Attach visualization
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=image_bytes,
+            file_name="results_chart.png",
+            content_type="image/png"
+        )]
+    )
+    
+    return image_bytes
+
+@track(type="tool")
+def generate_report(results, chart_bytes):
+    """Generate PDF report."""
+    # Create PDF report (simplified)
+    report_path = "/tmp/report.pdf"
+    create_pdf_report(results, chart_bytes, report_path)
+    
+    # Attach the report
+    opik_context.update_current_span(
+        attachments=[Attachment(
+            data=report_path,
+            file_name="analysis_report.pdf",
+            content_type="application/pdf"
+        )]
+    )
+    
+    return report_path
+
+@track(tags=["production", "analytics"])
+def full_analysis_pipeline(data_file):
+    """Complete analysis pipeline with multiple attachments."""
+    # Step 1: Analyze data (attaches input file)
+    results = analyze_data(data_file)
+    
+    # Step 2: Create visualizations (attaches chart)
+    chart = create_visualization(results)
+    
+    # Step 3: Generate report (attaches PDF)
+    report = generate_report(results, chart)
+    
+    # Attach summary to trace
+    summary = {
+        "total_records": len(results),
+        "report_location": report
+    }
+    
+    opik_context.update_current_trace(
+        output=summary,
+        metadata={"status": "completed"}
+    )
+    
+    return report
+
+# Run the pipeline
+result = full_analysis_pipeline("/data/input.json")
+print(f"Report generated: {result}")
+```
+
+## Viewing Attachments
+
+Attachments are visible in the Opik UI:
+
+1. Navigate to the trace or span in the Opik dashboard
+2. Click on the "Attachments" tab
+3. View or download the attached files
+
+Images and videos are rendered inline, while other file types can be downloaded.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Track Decorator" icon="at" href="/tracing/track-decorator">
+    Learn about the @track decorator
+  </Card>
+  
+  <Card title="Annotate Traces" icon="pen" href="/tracing/annotate-traces">
+    Add feedback scores and annotations
+  </Card>
+  
+  <Card title="Log Traces" icon="file-lines" href="/tracing/log-traces">
+    Create traces manually
+  </Card>
+  
+  <Card title="Overview" icon="book" href="/tracing/overview">
+    Back to tracing overview
+  </Card>
+</CardGroup>

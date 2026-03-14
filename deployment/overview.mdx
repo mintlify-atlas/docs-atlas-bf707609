@@ -1,0 +1,158 @@
+---
+title: "Deployment Overview"
+description: "Choose the best deployment option for your Opik installation"
+---
+
+## Deployment Options
+
+Opik offers flexible deployment options to suit different needs, from quick cloud setup to full self-hosted control.
+
+<CardGroup cols={2}>
+  <Card title="Comet Cloud" icon="cloud" href="/deployment/cloud">
+    Fastest setup with zero infrastructure management. Ideal for getting started quickly.
+  </Card>
+  <Card title="Docker Compose" icon="docker" href="/deployment/docker-compose">
+    Simple self-hosted deployment for development and testing environments.
+  </Card>
+  <Card title="Kubernetes" icon="dharmachakra" href="/deployment/kubernetes">
+    Production-ready deployment with scalability and high availability.
+  </Card>
+  <Card title="Installation Guide" icon="book" href="/installation">
+    Detailed installation instructions for all deployment options.
+  </Card>
+</CardGroup>
+
+## Choosing a Deployment Method
+
+<AccordionGroup>
+  <Accordion title="Comet Cloud" icon="cloud">
+    **Best for:**
+    - Teams wanting to get started immediately
+    - Projects that don't require data to stay on-premise
+    - Users who prefer managed infrastructure
+
+    **Features:**
+    - Zero infrastructure setup
+    - Automatic updates and maintenance
+    - Built-in high availability
+    - Free tier available
+    - Enterprise support options
+
+    **Considerations:**
+    - Data is stored in Comet's infrastructure
+    - Requires internet connectivity
+    - Subject to Comet's terms of service
+  </Accordion>
+
+  <Accordion title="Docker Compose" icon="docker">
+    **Best for:**
+    - Local development and testing
+    - Small teams or individual developers
+    - Proof of concept deployments
+    - Environments where Kubernetes is not available
+
+    **Features:**
+    - Simple setup with a single command
+    - Runs on any machine with Docker
+    - Full control over data and configuration
+    - Easy to customize and extend
+    - Service profiles for different scenarios
+
+    **Considerations:**
+    - Not designed for production scale
+    - Manual updates required
+    - Limited high availability options
+    - Single-node deployment
+  </Accordion>
+
+  <Accordion title="Kubernetes" icon="dharmachakra">
+    **Best for:**
+    - Production deployments
+    - Teams requiring high availability
+    - Organizations with existing Kubernetes infrastructure
+    - Deployments handling 40M+ traces/day
+
+    **Features:**
+    - Horizontal auto-scaling
+    - Rolling updates with zero downtime
+    - High availability and fault tolerance
+    - Resource management and optimization
+    - Integration with cloud platforms (AWS, GCP, Azure)
+
+    **Considerations:**
+    - Requires Kubernetes expertise
+    - More complex initial setup
+    - Higher resource requirements
+    - Requires monitoring and maintenance
+  </Accordion>
+</AccordionGroup>
+
+## Feature Comparison
+
+| Feature | Comet Cloud | Docker Compose | Kubernetes |
+|---------|-------------|----------------|------------|
+| Setup Time | < 5 minutes | 5-10 minutes | 30-60 minutes |
+| Infrastructure Management | Managed | Self-managed | Self-managed |
+| Scalability | Automatic | Limited | High |
+| High Availability | Built-in | No | Yes |
+| Data Location | Comet infrastructure | Your infrastructure | Your infrastructure |
+| Cost | Free tier + paid plans | Infrastructure only | Infrastructure only |
+| Updates | Automatic | Manual | Helm upgrades |
+| Production Ready | Yes | No | Yes |
+
+## Architecture Components
+
+Regardless of deployment method, Opik consists of these core components:
+
+<Steps>
+  <Step title="Frontend">
+    React-based web application for visualizing traces, managing experiments, and configuring evaluations.
+  </Step>
+  
+  <Step title="Backend API">
+    Java/Dropwizard REST API handling trace ingestion, storage, and retrieval.
+  </Step>
+  
+  <Step title="Python Backend">
+    Python service for evaluation metrics, LLM-as-a-judge scoring, and optimization.
+  </Step>
+  
+  <Step title="Databases">
+    - **MySQL**: Stores configuration, projects, datasets, and metadata
+    - **ClickHouse**: Stores traces and spans for high-volume analytics
+    - **Redis**: Caching and task queue management
+  </Step>
+  
+  <Step title="Optional Services">
+    - **Guardrails Backend**: PII detection and content moderation
+    - **OpenTelemetry Collector**: For OpenTelemetry-based integrations
+  </Step>
+</Steps>
+
+## Security Considerations
+
+<Warning>
+  Always follow security best practices when deploying Opik:
+  - Use strong passwords for database connections
+  - Enable TLS/SSL for production deployments
+  - Restrict network access to necessary ports only
+  - Keep all components up to date with security patches
+  - Use secrets management for API keys and credentials
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Deploy to Cloud" icon="rocket" href="/deployment/cloud">
+    Get started in minutes with Comet Cloud
+  </Card>
+  <Card title="Self-Host with Docker" icon="docker" href="/deployment/docker-compose">
+    Set up Opik locally for development
+  </Card>
+  <Card title="Production Kubernetes" icon="dharmachakra" href="/deployment/kubernetes">
+    Deploy to Kubernetes for production workloads
+  </Card>
+  <Card title="SDK Configuration" icon="code" href="/sdk/python/configuration">
+    Configure your SDK to connect to Opik
+  </Card>
+</CardGroup>

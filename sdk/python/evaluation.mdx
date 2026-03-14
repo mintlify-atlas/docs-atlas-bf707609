@@ -1,0 +1,611 @@
+---
+title: "Evaluation"
+description: "Evaluate LLM applications with datasets, metrics, and scoring functions"
+---
+
+Opik's evaluation framework allows you to systematically test and measure the performance of your LLM applications using datasets, metrics, and custom scoring functions.
+
+## Overview
+
+The evaluation system consists of:
+
+- **Datasets**: Collections of test cases with inputs and expected outputs
+- **Tasks**: Functions that process dataset items (your LLM application)
+- **Metrics**: Pre-built or custom scorers that evaluate task outputs
+- **Experiments**: Evaluation runs that compare different approaches
+
+## Basic Evaluation
+
+Run a simple evaluation with the `evaluate()` function:
+
+```python
+from opik import Opik, evaluate, track
+from opik.evaluation.metrics import Hallucination, IsJson
+
+# Create client and dataset
+client = Opik()
+dataset = client.get_or_create_dataset(name="my-dataset")
+
+# Define your task
+@track
+def my_task(item: dict) -> dict:
+    # Your LLM logic here
+    result = process_with_llm(item["input"])
+    return {
+        "output": result,
+        "reference": item.get("expected_output")
+    }
+
+# Run evaluation
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination(), IsJson()],
+    experiment_name="my-experiment"
+)
+
+print(results)
+```
+
+## evaluate() Function
+
+The main evaluation function with comprehensive options:
+
+```python
+from opik.evaluation import evaluate
+
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metric1, metric2],
+    experiment_name="experiment-v1",
+    project_name="my-project",
+    verbose=1,
+    nb_samples=100,
+    task_threads=16
+)
+```
+
+### Parameters
+
+<ParamField path="dataset" type="Dataset | DatasetVersion | EvaluationSuite" required>
+  The dataset to evaluate on. Can be a Dataset, specific DatasetVersion, or EvaluationSuite
+</ParamField>
+
+<ParamField path="task" type="callable" required>
+  A function that takes a dict (dataset item content) and returns a dict (task output)
+</ParamField>
+
+<ParamField path="scoring_metrics" type="list[BaseMetric]">
+  List of metric objects to calculate during evaluation. Each metric's `score()` method receives keys from the task output
+</ParamField>
+
+<ParamField path="scoring_functions" type="list[ScorerFunction]">
+  List of scorer functions with predefined arguments: `dataset_item`, `task_outputs`, and optionally `task_span`
+</ParamField>
+
+<ParamField path="experiment_name" type="string">
+  Name for the experiment. If not provided, a name will be auto-generated
+</ParamField>
+
+<ParamField path="experiment_name_prefix" type="string">
+  Prefix for auto-generated experiment names (e.g., `"my-exp"` becomes `"my-exp-abc123"`)
+</ParamField>
+
+<ParamField path="project_name" type="string">
+  Project to log results to. Defaults to the client's default project
+</ParamField>
+
+<ParamField path="experiment_config" type="dict">
+  Dictionary with experiment configuration parameters (e.g., model settings)
+</ParamField>
+
+<ParamField path="verbose" type="int" default="1">
+  Verbosity level: 0 (silent), 1 (progress bar and summary), 2 (detailed statistics)
+</ParamField>
+
+<ParamField path="nb_samples" type="int">
+  Number of samples to evaluate. If not provided, all dataset items are used
+</ParamField>
+
+<ParamField path="task_threads" type="int" default="16">
+  Number of worker threads for parallel task execution. Set to 1 for sequential execution
+</ParamField>
+
+<ParamField path="prompts" type="list[BasePrompt]">
+  List of Prompt objects to link with the experiment
+</ParamField>
+
+<ParamField path="scoring_key_mapping" type="dict">
+  Map dataset/task keys to metric parameter names. Example: `{"input": "user_question"}` maps `user_question` to the `input` parameter
+</ParamField>
+
+<ParamField path="dataset_item_ids" type="list[string]">
+  Specific dataset item IDs to evaluate. If provided, only these items are used
+</ParamField>
+
+<ParamField path="dataset_sampler" type="BaseDatasetSampler">
+  Custom sampler for selecting dataset items
+</ParamField>
+
+<ParamField path="trial_count" type="int" default="1">
+  Number of times to run the task for each dataset item (useful for non-deterministic tasks)
+</ParamField>
+
+<ParamField path="experiment_scoring_functions" type="list[callable]">
+  Functions that compute experiment-level aggregate scores. Each receives a list of TestResult objects and returns ScoreResult objects
+</ParamField>
+
+<ParamField path="experiment_tags" type="list[string]">
+  Tags to associate with the experiment
+</ParamField>
+
+<ParamField path="dataset_filter_string" type="string">
+  OQL filter to select specific dataset items (e.g., `'tags contains "important"'`)
+</ParamField>
+
+### Returns
+
+<ResponseField name="results" type="EvaluationResult">
+  Object containing:
+  - `experiment_name`: Name of the experiment
+  - `experiment_id`: Unique experiment ID
+  - `test_results`: List of TestResult objects (one per dataset item)
+  - Summary statistics
+</ResponseField>
+
+## Built-in Metrics
+
+Opik provides pre-built metrics for common evaluation tasks:
+
+### Hallucination
+
+Detects if the output contains hallucinated information:
+
+```python
+from opik.evaluation.metrics import Hallucination
+
+hallucination_metric = Hallucination()
+
+# Task must return: output, context, and optionally input
+@track
+def my_task(item: dict) -> dict:
+    return {
+        "output": "Generated answer",
+        "context": ["Context from knowledge base"],
+        "input": item["input"]
+    }
+
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[hallucination_metric]
+)
+```
+
+### IsJson
+
+Checks if the output is valid JSON:
+
+```python
+from opik.evaluation.metrics import IsJson
+
+is_json = IsJson()
+
+@track
+def my_task(item: dict) -> dict:
+    return {"output": '{"key": "value"}'}
+
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[is_json]
+)
+```
+
+### Additional Metrics
+
+Opik supports many other metrics. Check the full metrics documentation for:
+- Answer relevance
+- Context precision/recall
+- Semantic similarity
+- Custom LLM-as-judge metrics
+
+## Custom Scoring Functions
+
+Create custom scorers using the `ScorerFunction` wrapper:
+
+```python
+from opik.evaluation import evaluate
+from opik.evaluation.scorers import scorer_function
+
+@scorer_function
+def custom_scorer(dataset_item: dict, task_outputs: dict) -> float:
+    # Access dataset item
+    expected = dataset_item.get("expected_output", "")
+    
+    # Access task output
+    actual = task_outputs.get("output", "")
+    
+    # Compute score (0.0 to 1.0)
+    score = compute_similarity(expected, actual)
+    
+    return score
+
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_functions=[custom_scorer]
+)
+```
+
+### Scorer Function Parameters
+
+Scorer functions receive these predefined parameters:
+
+<ParamField path="dataset_item" type="dict">
+  The dataset item content (input, expected output, metadata, etc.)
+</ParamField>
+
+<ParamField path="task_outputs" type="dict">
+  The dictionary returned by your task function
+</ParamField>
+
+<ParamField path="task_span" type="SpanData" optional>
+  Span data collected during task execution (includes timing, metadata, etc.)
+</ParamField>
+
+### Advanced Scorer with Multiple Scores
+
+```python
+from opik.evaluation.scorers import scorer_function
+from opik.evaluation.metrics import score_result
+
+@scorer_function
+def multi_score_evaluator(dataset_item: dict, task_outputs: dict):
+    output = task_outputs["output"]
+    
+    return [
+        score_result.ScoreResult(
+            name="length_score",
+            value=min(len(output) / 100, 1.0)
+        ),
+        score_result.ScoreResult(
+            name="quality_score",
+            value=assess_quality(output),
+            reason="Based on grammar and coherence"
+        )
+    ]
+```
+
+## Scoring Key Mapping
+
+Map dataset or task keys to metric parameter names:
+
+```python
+from opik.evaluation import evaluate
+from opik.evaluation.metrics import Hallucination
+
+# Dataset items have: {"user_question": "...", "context": "..."}
+# Task returns: {"answer": "..."}
+
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination()],
+    scoring_key_mapping={
+        "input": "user_question",  # Map user_question -> input
+        "output": "answer",         # Map answer -> output
+        "context": "context"        # context already matches
+    }
+)
+```
+
+## Experiment-Level Scoring
+
+Compute aggregate scores across all test results:
+
+```python
+from opik.evaluation import evaluate, test_result
+from opik.evaluation.metrics import score_result
+
+def compute_aggregate_stats(test_results: list[test_result.TestResult]):
+    # Extract individual scores
+    scores = [
+        result.score_results[0].value
+        for result in test_results
+        if result.score_results
+    ]
+    
+    if not scores:
+        return []
+    
+    # Compute aggregates
+    return [
+        score_result.ScoreResult(
+            name="average_score",
+            value=sum(scores) / len(scores)
+        ),
+        score_result.ScoreResult(
+            name="max_score",
+            value=max(scores)
+        ),
+        score_result.ScoreResult(
+            name="min_score",
+            value=min(scores)
+        )
+    ]
+
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination()],
+    experiment_scoring_functions=[compute_aggregate_stats]
+)
+```
+
+## Filtering Dataset Items
+
+Use OQL filters to evaluate specific subsets:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metric],
+    dataset_filter_string='tags contains "important"'
+)
+```
+
+### Filter Examples
+
+<CodeGroup>
+```python By Tags
+dataset_filter_string='tags contains "production"'
+```
+
+```python By Data Field
+dataset_filter_string='data.category = "technical"'
+```
+
+```python By Date
+dataset_filter_string='created_at >= "2024-01-01T00:00:00Z"'
+```
+
+```python Combined
+dataset_filter_string='tags contains "test" and data.difficulty = "hard"'
+```
+</CodeGroup>
+
+## Evaluating Existing Experiments
+
+Add metrics to an already-run experiment:
+
+```python
+from opik.evaluation import evaluate_experiment
+from opik.evaluation.metrics import IsJson
+
+# Evaluate an existing experiment by name
+results = evaluate_experiment(
+    experiment_name="existing-experiment",
+    scoring_metrics=[IsJson()]
+)
+```
+
+## Prompt Evaluation
+
+Evaluate different prompt versions:
+
+```python
+from opik import Opik, evaluate_prompt
+from opik.evaluation.metrics import Hallucination
+
+client = Opik()
+
+# Get a prompt from Opik
+prompt = client.get_prompt(name="my-prompt", version="1.0")
+
+# Define task using the prompt
+def my_task(item: dict) -> dict:
+    formatted = prompt.format(**item["input"])
+    result = llm_call(formatted)
+    return {"output": result}
+
+# Evaluate the prompt
+results = evaluate_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination()]
+)
+```
+
+## Trial Count for Non-Deterministic Tasks
+
+Run each dataset item multiple times:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_nondeterministic_task,
+    scoring_metrics=[metric],
+    trial_count=3  # Run each item 3 times
+)
+```
+
+This is useful when:
+- Your LLM has high temperature settings
+- You want to measure consistency
+- You need statistical confidence
+
+## Parallel Execution
+
+Control parallelism with `task_threads`:
+
+```python
+# Sequential execution (useful for debugging)
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metric],
+    task_threads=1
+)
+
+# High parallelism (for I/O-bound tasks)
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metric],
+    task_threads=32
+)
+```
+
+## Complete Example
+
+```python
+from opik import Opik, evaluate, track
+from opik.evaluation.metrics import Hallucination, IsJson, score_result
+from opik.evaluation.scorers import scorer_function
+from opik.integrations.openai import track_openai
+import openai
+
+# Setup
+client = Opik(project_name="evaluation-demo")
+openai_client = track_openai(openai.OpenAI())
+
+# Create dataset
+dataset = client.get_or_create_dataset(name="qa-dataset")
+dataset.insert([
+    {
+        "input": {"question": "What is AI?"},
+        "expected_output": "Artificial Intelligence is...",
+        "context": ["AI definition from textbook"]
+    },
+    {
+        "input": {"question": "What is ML?"},
+        "expected_output": "Machine Learning is...",
+        "context": ["ML definition from textbook"]
+    }
+])
+
+# Define task
+@track(type="llm")
+def qa_task(item: dict) -> dict:
+    question = item["input"]["question"]
+    context = item.get("context", [])
+    
+    prompt = f"Context: {context}\n\nQuestion: {question}\n\nAnswer:"
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return {
+        "output": response.choices[0].message.content,
+        "context": context,
+        "reference": item.get("expected_output")
+    }
+
+# Custom scorer
+@scorer_function
+def length_scorer(dataset_item: dict, task_outputs: dict) -> float:
+    output_length = len(task_outputs["output"])
+    return min(output_length / 200, 1.0)  # Score based on length
+
+# Experiment-level scoring
+def compute_stats(test_results):
+    scores = [r.score_results[0].value for r in test_results if r.score_results]
+    return [
+        score_result.ScoreResult(
+            name="avg_hallucination",
+            value=sum(scores) / len(scores) if scores else 0
+        )
+    ]
+
+# Run evaluation
+results = evaluate(
+    dataset=dataset,
+    task=qa_task,
+    scoring_metrics=[Hallucination(), IsJson()],
+    scoring_functions=[length_scorer],
+    experiment_name="gpt4-qa-v1",
+    experiment_config={
+        "model": "gpt-4",
+        "temperature": 0.7
+    },
+    experiment_scoring_functions=[compute_stats],
+    experiment_tags=["production", "qa"],
+    verbose=2,
+    task_threads=8
+)
+
+# Access results
+print(f"Experiment: {results.experiment_name}")
+print(f"Total items: {len(results.test_results)}")
+
+for test_result in results.test_results:
+    print(f"Item: {test_result.dataset_item_id}")
+    for score in test_result.score_results:
+        print(f"  {score.name}: {score.value}")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use appropriate metrics">
+    Choose metrics that align with your use case:
+    - **Hallucination** for factual accuracy
+    - **Semantic similarity** for content matching
+    - **Custom scorers** for domain-specific requirements
+  </Accordion>
+  
+  <Accordion title="Start with small datasets">
+    Test your evaluation setup with a small dataset first:
+    ```python
+    results = evaluate(
+        dataset=dataset,
+        task=my_task,
+        scoring_metrics=[metric],
+        nb_samples=10  # Start small
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Use descriptive experiment names">
+    Make experiments easy to identify:
+    ```python
+    experiment_name="gpt4-rag-v2-temp0.7"
+    ```
+  </Accordion>
+  
+  <Accordion title="Add experiment metadata">
+    Include configuration for reproducibility:
+    ```python
+    experiment_config={
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "retrieval_k": 5
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Tag experiments">
+    Use tags for organization and filtering:
+    ```python
+    experiment_tags=["production", "baseline", "v2"]
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Datasets" icon="database" href="/sdk/python/datasets">
+    Learn how to create and manage datasets
+  </Card>
+  <Card title="Experiments" icon="flask" href="/sdk/python/experiments">
+    Compare experiments and track performance
+  </Card>
+</CardGroup>

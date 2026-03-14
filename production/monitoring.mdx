@@ -1,0 +1,330 @@
+---
+title: "Production Monitoring"
+description: "Monitor your LLM applications in production with comprehensive observability"
+---
+
+Opik provides robust production monitoring capabilities to help you track, analyze, and optimize your LLM applications at scale. With support for logging 40M+ traces per day, Opik is designed to handle production workloads while giving you deep insights into your application's performance.
+
+## Overview
+
+Production monitoring in Opik enables you to:
+
+- Track high volumes of production traces and spans in real-time
+- Monitor feedback scores, token usage, and costs over time
+- Identify performance bottlenecks and errors
+- Filter and search through production data using Opik Query Language (OQL)
+- Set up online evaluation rules for continuous quality monitoring
+
+## Logging Production Traces
+
+### Using Decorators
+
+The simplest way to log production traces is using the `@track` decorator:
+
+```python
+import opik
+from opik.integrations.openai import track_openai
+import openai
+
+# Configure for production
+client = opik.Opik(project_name="production-app")
+
+openai_client = track_openai(openai.OpenAI())
+
+@opik.track(tags=["production", "chat-endpoint"])
+def chat_completion(user_message: str, user_id: str):
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": user_message}],
+    )
+    
+    return {
+        "output": response.choices[0].message.content,
+        "model": "gpt-4",
+        "user_id": user_id,
+    }
+```
+
+### Manual Trace Logging
+
+For more control over your traces, use the manual API:
+
+```python
+import opik
+
+client = opik.Opik(project_name="production-app")
+
+# Create a trace
+trace = client.trace(
+    name="chat-completion",
+    input={"message": "What is the capital of France?"},
+    metadata={"user_id": "user_123", "environment": "production"},
+    tags=["production", "europe"],
+)
+
+# Create spans for detailed tracking
+span = trace.span(
+    name="llm-call",
+    type="llm",
+    input={"prompt": "What is the capital of France?"},
+)
+
+# Your LLM logic here
+output = "Paris is the capital of France."
+
+span.update(
+    output={"response": output},
+    usage={"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
+    model="gpt-4",
+)
+span.end()
+
+trace.update(output={"response": output})
+trace.end()
+
+client.end()
+```
+
+## Searching and Filtering Production Data
+
+Opik provides powerful search capabilities using Opik Query Language (OQL) to filter your production traces:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Search traces from the last 24 hours with high token usage
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='start_time >= "2024-01-01T00:00:00Z" AND usage.total_tokens > 1000',
+    max_results=100,
+)
+
+# Filter by tags
+production_traces = client.search_traces(
+    project_name="production-app",
+    filter_string='tags contains "production"',
+)
+
+# Search by feedback scores
+high_quality_traces = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy > 0.8',
+)
+
+# Complex filters
+problematic_traces = client.search_traces(
+    project_name="production-app",
+    filter_string='duration > 5000 AND feedback_scores.user_satisfaction < 0.5',
+)
+```
+
+### Supported Filter Columns
+
+<Tabs>
+  <Tab title="String Fields">
+    - `id`, `name`, `created_by`, `thread_id`, `type`, `model`, `provider`
+    - Operators: `=`, `!=`, `contains`, `not_contains`, `starts_with`, `ends_with`, `>`, `<`
+  </Tab>
+  <Tab title="Numeric Fields">
+    - `usage.total_tokens`, `usage.prompt_tokens`, `usage.completion_tokens`
+    - `duration`, `number_of_messages`, `total_estimated_cost`
+    - `feedback_scores.<metric_name>`
+    - Operators: `=`, `!=`, `>`, `<`, `>=`, `<=`, `is_empty`, `is_not_empty`
+  </Tab>
+  <Tab title="DateTime Fields">
+    - `start_time`, `end_time`
+    - Use ISO 8601 format: `"2024-01-01T00:00:00Z"`
+    - Operators: `=`, `>`, `<`, `>=`, `<=`
+  </Tab>
+  <Tab title="Special Fields">
+    - `metadata.<field_name>` - Dictionary field (dot notation)
+    - `tags` - List field (use `contains` operator only)
+    - `input`, `output` - Content fields (=, contains, not_contains)
+  </Tab>
+</Tabs>
+
+## Monitoring Token Usage and Costs
+
+Track token consumption and associated costs across your production environment:
+
+```python
+import opik
+from datetime import datetime, timedelta
+
+client = opik.Opik()
+
+# Get traces from the last week
+start_date = (datetime.now() - timedelta(days=7)).isoformat() + "Z"
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{start_date}"',
+    max_results=10000,
+)
+
+# Calculate total costs
+total_tokens = sum(t.usage.get('total_tokens', 0) for t in traces if t.usage)
+total_cost = sum(t.total_estimated_cost or 0 for t in traces)
+
+print(f"Total tokens used: {total_tokens:,}")
+print(f"Total estimated cost: ${total_cost:.2f}")
+
+# Analyze by model
+from collections import defaultdict
+
+model_stats = defaultdict(lambda: {'count': 0, 'tokens': 0, 'cost': 0})
+for trace in traces:
+    if trace.model:
+        model_stats[trace.model]['count'] += 1
+        model_stats[trace.model]['tokens'] += trace.usage.get('total_tokens', 0) if trace.usage else 0
+        model_stats[trace.model]['cost'] += trace.total_estimated_cost or 0
+
+for model, stats in model_stats.items():
+    print(f"{model}: {stats['count']} calls, {stats['tokens']:,} tokens, ${stats['cost']:.2f}")
+```
+
+## Tracking Thread-Based Conversations
+
+For multi-turn conversations, use thread IDs to group related traces:
+
+```python
+import opik
+import uuid
+
+client = opik.Opik(project_name="production-app")
+
+# Generate a unique thread ID for the conversation
+thread_id = str(uuid.uuid4())
+
+# First message in conversation
+trace1 = client.trace(
+    name="chat-turn-1",
+    input={"message": "What is machine learning?"},
+    thread_id=thread_id,
+    tags=["production", "onboarding"],
+)
+trace1.update(output={"response": "Machine learning is..."})
+trace1.end()
+
+# Second message in same conversation
+trace2 = client.trace(
+    name="chat-turn-2",
+    input={"message": "Can you give me an example?"},
+    thread_id=thread_id,
+    tags=["production", "onboarding"],
+)
+trace2.update(output={"response": "Sure, an example is..."})
+trace2.end()
+
+client.end()
+
+# Later, search for all traces in this conversation
+conversation_traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'thread_id = "{thread_id}"',
+)
+```
+
+## Error Tracking
+
+Capture and monitor errors in production:
+
+```python
+import opik
+import traceback
+
+client = opik.Opik(project_name="production-app")
+
+@opik.track(tags=["production"])
+def process_user_request(user_input: str):
+    trace = opik.get_current_trace()
+    
+    try:
+        # Your processing logic
+        result = complex_operation(user_input)
+        return result
+    except Exception as e:
+        # Log error information
+        error_info = {
+            "exception_type": type(e).__name__,
+            "message": str(e),
+            "traceback": traceback.format_exc(),
+        }
+        
+        if trace:
+            trace.update(error_info=error_info)
+        
+        raise
+
+# Search for failed traces
+failed_traces = client.search_traces(
+    project_name="production-app",
+    filter_string='error_info is_not_empty',
+)
+```
+
+## Best Practices
+
+<Card title="Use Meaningful Tags" icon="tag">
+  Tag your traces with environment (`production`, `staging`), features, and user segments to enable powerful filtering and analysis.
+</Card>
+
+<Card title="Implement Sampling for High-Volume Apps" icon="chart-line">
+  For extremely high-traffic applications, consider sampling a percentage of requests while ensuring critical paths are always logged.
+</Card>
+
+<Card title="Set Up Metadata Standards" icon="database">
+  Establish consistent metadata schemas across your team (e.g., `user_id`, `session_id`, `environment`) for easier analysis.
+</Card>
+
+<Card title="Monitor Costs Regularly" icon="dollar-sign">
+  Set up regular cost monitoring to avoid surprises. Use dashboards to track trends and set up alerts for anomalies.
+</Card>
+
+<Card title="Use Thread IDs for Conversations" icon="comments">
+  Always group multi-turn conversations with thread IDs to enable conversation-level analysis and debugging.
+</Card>
+
+## Performance Considerations
+
+<Note>
+Opik is designed for production scale with support for 40M+ traces per day. The SDK uses:
+- **Asynchronous batching** to minimize performance impact
+- **Background workers** to process traces without blocking your application
+- **Automatic retry logic** for network failures
+- **Local buffering** with fallback mechanisms
+</Note>
+
+### Configuration Options
+
+```python
+import opik
+
+# Configure for high-volume production use
+client = opik.Opik(
+    project_name="high-traffic-app",
+    # Opik handles batching automatically
+)
+
+# The SDK will automatically batch and send traces in the background
+# Ensure to call client.end() or use context managers for proper cleanup
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Dashboards" icon="chart-line" href="/production/dashboards">
+    Visualize your production metrics with custom dashboards
+  </Card>
+  <Card title="Online Evaluation" icon="clipboard-check" href="/production/online-evaluation">
+    Set up automated quality checks for production traces
+  </Card>
+  <Card title="Feedback Scores" icon="star" href="/production/feedback-scores">
+    Track and analyze user and automated feedback
+  </Card>
+  <Card title="Metrics" icon="calculator" href="/evaluation/metrics/overview">
+    Learn about LLM-as-a-Judge metrics for evaluation
+  </Card>
+</CardGroup>

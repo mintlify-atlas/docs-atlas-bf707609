@@ -1,0 +1,535 @@
+---
+title: Installation
+description: Deploy Opik in the cloud or self-host for complete control over your AI observability platform
+---
+
+Opik offers flexible deployment options to suit your needs. Choose between a fully-managed cloud solution or self-hosted deployment for complete control.
+
+## Opik Server Installation
+
+Before using the Opik Python SDK, you need access to an Opik server. Choose the option that best fits your requirements:
+
+<CardGroup cols={2}>
+  <Card title="Comet Cloud" icon="cloud" href="#comet-cloud-recommended">
+    Easiest setup - start in seconds with zero maintenance
+  </Card>
+  <Card title="Self-Hosted" icon="server" href="#self-hosted-deployment">
+    Full control - deploy in your own infrastructure
+  </Card>
+</CardGroup>
+
+## Comet Cloud (Recommended)
+
+The fastest way to get started with Opik. Comet manages the infrastructure, updates, and scaling for you.
+
+### Benefits
+
+- **Zero Setup**: No installation or configuration required
+- **Always Updated**: Automatic updates with the latest features
+- **Scalable**: Handles 40M+ traces per day
+- **Free Tier**: Generous free tier for development and small projects
+- **Secure**: Enterprise-grade security and compliance
+
+### Getting Started
+
+<Steps>
+  <Step title="Create Your Account">
+    Sign up for a free Comet account:
+
+    👉 [Create your free account](https://www.comet.com/signup)
+
+    You'll receive an API key after registration.
+  </Step>
+
+  <Step title="Install the Python SDK">
+    <CodeGroup>
+    ```bash pip
+    pip install opik
+    ```
+
+    ```bash uv
+    uv pip install opik
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Configure the SDK">
+    Run the configuration command:
+
+    ```bash
+    opik configure
+    ```
+
+    When prompted:
+    - Enter your API key (from your Comet account)
+    - Enter your workspace name
+
+    Alternatively, configure programmatically:
+
+    ```python
+    import opik
+
+    opik.configure(
+        api_key="YOUR_API_KEY",
+        workspace="YOUR_WORKSPACE"
+    )
+    ```
+
+    <Tip>
+    You can also set environment variables:
+    ```bash
+    export COMET_API_KEY="your-api-key"
+    export COMET_WORKSPACE="your-workspace"
+    ```
+    </Tip>
+  </Step>
+
+  <Step title="Start Tracking">
+    You're ready to start logging traces! See the [Quickstart guide](/quickstart) for examples.
+  </Step>
+</Steps>
+
+## Self-Hosted Deployment
+
+Deploy Opik in your own infrastructure for complete control over data, security, and customization.
+
+### Deployment Options
+
+<Tabs>
+  <Tab title="Docker Compose">
+    **Best for**: Local development, testing, and small-scale deployments
+
+    <Steps>
+      <Step title="Prerequisites">
+        Ensure you have installed:
+        - [Docker](https://docs.docker.com/engine/install/) (20.10+)
+        - [Docker Compose](https://docs.docker.com/compose/install/) (2.0+)
+        - Git
+      </Step>
+
+      <Step title="Clone the Repository">
+        ```bash
+        git clone https://github.com/comet-ml/opik.git
+        cd opik
+        ```
+      </Step>
+
+      <Step title="Start Opik">
+        <Tabs>
+          <Tab title="Linux/macOS">
+            ```bash
+            # Start the full Opik suite
+            ./opik.sh
+            ```
+          </Tab>
+
+          <Tab title="Windows">
+            ```powershell
+            # Start the full Opik suite
+            powershell -ExecutionPolicy ByPass -c ".\opik.ps1"
+            ```
+          </Tab>
+        </Tabs>
+
+        The script will start all required services:
+        - Frontend (UI)
+        - Backend (API)
+        - Python Backend
+        - MySQL (metadata storage)
+        - ClickHouse (trace storage)
+        - Redis (caching)
+        - MinIO (file storage)
+      </Step>
+
+      <Step title="Access the UI">
+        Once all services are running, open your browser:
+
+        👉 [http://localhost:5173](http://localhost:5173)
+
+        <Info>
+        First startup may take 2-3 minutes while Docker downloads images and initializes databases.
+        </Info>
+      </Step>
+    </Steps>
+
+    ### Service Profiles
+
+    Opik supports different service profiles for various development scenarios:
+
+    <CodeGroup>
+    ```bash Full Suite (Default)
+    # All infrastructure and services
+    ./opik.sh
+    ```
+
+    ```bash Infrastructure Only
+    # Only databases, caches, storage
+    ./opik.sh --infra
+    ```
+
+    ```bash Backend Development
+    # Infrastructure + backend services
+    ./opik.sh --backend
+    ```
+
+    ```bash With Guardrails
+    # Add guardrails services to any profile
+    ./opik.sh --guardrails
+    ./opik.sh --backend --guardrails
+    ```
+    </CodeGroup>
+
+    ### Troubleshooting
+
+    <AccordionGroup>
+      <Accordion title="Services fail to start">
+        ```bash
+        # Check service status
+        ./opik.sh --info
+
+        # View logs
+        docker compose logs -f
+
+        # Restart services
+        ./opik.sh --stop
+        ./opik.sh
+        ```
+      </Accordion>
+
+      <Accordion title="Port conflicts">
+        If you have other services running on the default ports, you can modify the ports in `docker-compose.yaml`:
+
+        ```yaml
+        frontend:
+          ports:
+            - "127.0.0.1:5173:5173"  # Change first port (host)
+        ```
+      </Accordion>
+
+      <Accordion title="Database initialization issues">
+        ```bash
+        # Stop all services
+        ./opik.sh --stop
+
+        # Remove volumes (WARNING: deletes all data)
+        docker compose down -v
+
+        # Start fresh
+        ./opik.sh --build
+        ```
+      </Accordion>
+    </AccordionGroup>
+
+    ### Configuration
+
+    After Opik is running locally, configure the Python SDK:
+
+    ```bash
+    opik configure
+    ```
+
+    Select the local deployment option, or configure programmatically:
+
+    ```python
+    import opik
+
+    opik.configure(use_local=True)
+    ```
+
+    This sets the API URL to `http://localhost:5173` automatically.
+  </Tab>
+
+  <Tab title="Kubernetes (Helm)">
+    **Best for**: Production deployments, scalable infrastructure, and multi-environment setups
+
+    <Steps>
+      <Step title="Prerequisites">
+        Ensure you have:
+        - [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) configured
+        - [Helm 3.10+](https://helm.sh/docs/intro/install/)
+        - A Kubernetes cluster (minikube, GKE, EKS, AKS, etc.)
+      </Step>
+
+      <Step title="Add the Opik Helm Repository">
+        ```bash
+        # Add the Opik Helm repository
+        helm repo add opik https://comet-ml.github.io/opik/
+
+        # Update repository index
+        helm repo update
+        ```
+      </Step>
+
+      <Step title="Install Opik">
+        ```bash
+        # Set the version you want to install
+        VERSION=1.10.39
+
+        # Install Opik in the 'opik' namespace
+        helm upgrade --install opik opik/opik \
+          -n opik \
+          --create-namespace \
+          --set component.backend.image.tag=$VERSION \
+          --set component.frontend.image.tag=$VERSION
+        ```
+
+        <Info>
+        The Helm chart includes:
+        - Opik Frontend and Backend
+        - MySQL (with custom chart for better performance)
+        - ClickHouse (with Altinity operator)
+        - Redis, MinIO, ZooKeeper
+        - Configurable ingress and autoscaling
+        </Info>
+      </Step>
+
+      <Step title="Access the Application">
+        Port-forward the frontend service to access locally:
+
+        ```bash
+        kubectl port-forward -n opik svc/opik-frontend 5173
+        ```
+
+        Open [http://localhost:5173](http://localhost:5173) in your browser.
+
+        <Tip>
+        For production, configure an Ingress or LoadBalancer:
+
+        ```yaml
+        # values.yaml
+        ingress:
+          enabled: true
+          className: nginx
+          hosts:
+            - host: opik.yourdomain.com
+              paths:
+                - path: /
+                  pathType: Prefix
+        ```
+
+        ```bash
+        helm upgrade --install opik opik/opik \
+          -n opik \
+          -f values.yaml
+        ```
+        </Tip>
+      </Step>
+
+      <Step title="Configure the SDK">
+        Point the Opik SDK to your Kubernetes deployment:
+
+        ```python
+        import opik
+
+        opik.configure(
+            url="http://opik.yourdomain.com",  # Or port-forwarded URL
+            use_local=True
+        )
+        ```
+      </Step>
+    </Steps>
+
+    ### Advanced Configuration
+
+    <AccordionGroup>
+      <Accordion title="Custom values file">
+        Create a `custom-values.yaml` file for your configuration:
+
+        ```yaml
+        # custom-values.yaml
+        component:
+          frontend:
+            replicas: 2
+            resources:
+              requests:
+                memory: "512Mi"
+                cpu: "500m"
+          backend:
+            replicas: 3
+            resources:
+              requests:
+                memory: "2Gi"
+                cpu: "1000m"
+
+        # Configure persistent storage
+        mysql:
+          persistence:
+            size: 100Gi
+            storageClass: fast-ssd
+
+        clickhouse:
+          persistence:
+            size: 500Gi
+            storageClass: fast-ssd
+        ```
+
+        Install with custom values:
+
+        ```bash
+        helm upgrade --install opik opik/opik \
+          -n opik \
+          -f custom-values.yaml
+        ```
+      </Accordion>
+
+      <Accordion title="Enable autoscaling">
+        ```yaml
+        # values.yaml
+        component:
+          backend:
+            autoscaling:
+              enabled: true
+              minReplicas: 2
+              maxReplicas: 10
+              targetCPUUtilizationPercentage: 70
+        ```
+      </Accordion>
+
+      <Accordion title="Install from source">
+        ```bash
+        # Clone the repository
+        git clone https://github.com/comet-ml/opik.git
+        cd opik/deployment/helm_chart/opik
+
+        # Add required dependencies
+        helm repo add bitnami https://charts.bitnami.com/bitnami
+        helm dependency build
+
+        # Install
+        VERSION=1.10.39
+        helm upgrade --install opik . \
+          -n opik \
+          --create-namespace \
+          -f values.yaml \
+          --set component.backend.image.tag=$VERSION \
+          --set component.frontend.image.tag=$VERSION
+        ```
+      </Accordion>
+    </AccordionGroup>
+
+    ### Monitoring and Operations
+
+    <Info>
+    Check the status of your deployment:
+
+    ```bash
+    # View all pods
+    kubectl get pods -n opik
+
+    # Check specific service logs
+    kubectl logs -n opik deployment/opik-backend
+
+    # Watch pod status
+    kubectl get pods -n opik -w
+    ```
+    </Info>
+  </Tab>
+</Tabs>
+
+## SDK Configuration Reference
+
+The Opik Python SDK can be configured in multiple ways:
+
+### Configuration Methods
+
+<CodeGroup>
+```python CLI Command
+# Interactive configuration
+opik configure
+
+# Non-interactive for cloud
+opik configure --api_key YOUR_KEY --workspace YOUR_WORKSPACE
+
+# Non-interactive for local
+opik configure --use_local
+```
+
+```python Programmatic
+import opik
+
+# Cloud configuration
+opik.configure(
+    api_key="YOUR_API_KEY",
+    workspace="YOUR_WORKSPACE"
+)
+
+# Local configuration
+opik.configure(use_local=True)
+
+# Custom URL
+opik.configure(
+    url="http://opik.yourdomain.com",
+    use_local=True
+)
+```
+
+```python Environment Variables
+# For cloud
+export COMET_API_KEY="your-api-key"
+export COMET_WORKSPACE="your-workspace"
+
+# For local
+export OPIK_URL_OVERRIDE="http://localhost:5173"
+```
+
+```python Client Initialization
+import opik
+
+# Create client with explicit configuration
+client = opik.Opik(
+    api_key="YOUR_API_KEY",
+    workspace="YOUR_WORKSPACE",
+    host="https://www.comet.com"  # or your self-hosted URL
+)
+```
+</CodeGroup>
+
+## Version Information
+
+<Info>
+Current stable version: **1.10.39**
+
+Check the [changelog](https://github.com/comet-ml/opik/blob/main/CHANGELOG.md) for release notes and version-specific information.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/introduction">
+    Get started with tracking and evaluation
+  </Card>
+  <Card title="Tracing" icon="route" href="/tracing">
+    Learn about comprehensive observability
+  </Card>
+  <Card title="Integrations" icon="plug" href="/integrations">
+    Explore 40+ framework integrations
+  </Card>
+  <Card title="Production Monitoring" icon="chart-line" href="/production">
+    Scale to production workloads
+  </Card>
+</CardGroup>
+
+## Security Considerations
+
+<Warning>
+**Self-Hosted Deployments**:
+
+- Keep secrets and API keys out of source control
+- Use environment variables or secrets management (e.g., Kubernetes Secrets)
+- Configure network policies and firewalls appropriately
+- Enable TLS/SSL for production deployments
+- Regularly update to the latest version for security patches
+- Review the security settings in the Helm chart values
+</Warning>
+
+<Tip>
+**Production Checklist**:
+
+- [ ] Configure persistent storage for databases
+- [ ] Set up regular database backups
+- [ ] Enable monitoring and alerting
+- [ ] Configure resource limits and autoscaling
+- [ ] Set up ingress with TLS certificates
+- [ ] Configure authentication if using self-hosted
+- [ ] Test disaster recovery procedures
+</Tip>

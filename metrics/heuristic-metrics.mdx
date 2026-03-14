@@ -1,0 +1,475 @@
+---
+title: "Heuristic Metrics"
+description: "Fast, deterministic metrics for evaluating LLM outputs"
+---
+
+Heuristic metrics provide fast, deterministic evaluation without requiring LLM calls. They're ideal for quick checks, CI/CD pipelines, and cost-effective large-scale evaluations.
+
+## String Comparison Metrics
+
+### Equals
+
+Checks if an output exactly matches the expected output.
+
+```python
+from opik.evaluation.metrics import Equals
+
+metric = Equals(case_sensitive=True)
+result = metric.score(
+    output="Hello, World!",
+    reference="Hello, World!"
+)
+
+print(result.value)  # 1.0 (exact match)
+```
+
+**Parameters:**
+- `case_sensitive` (bool): Whether comparison is case-sensitive (default: `False`)
+- `name` (str): Metric name (default: `"equals_metric"`)
+- `track` (bool): Whether to track (default: `True`)
+- `project_name` (Optional[str]): Project name for tracking
+
+**Score Method:**
+- `output` (Any): The output to check (converted to string)
+- `reference` (Any): The expected output (converted to string)
+
+**Returns:** `1.0` if values match, `0.0` otherwise
+
+**Example - Case Insensitive:**
+```python
+metric = Equals(case_sensitive=False)
+result = metric.score(output="hello", reference="HELLO")
+print(result.value)  # 1.0
+```
+
+### Contains
+
+Checks if a reference string is contained within the output.
+
+```python
+from opik.evaluation.metrics import Contains
+
+# Set default reference at initialization
+metric = Contains(reference="Paris")
+result = metric.score(output="The capital of France is Paris.")
+print(result.value)  # 1.0
+
+# Override reference at score time
+result = metric.score(
+    output="Hello, World!",
+    reference="World"
+)
+print(result.value)  # 1.0
+```
+
+**Parameters:**
+- `case_sensitive` (bool): Case-sensitive matching (default: `False`)
+- `reference` (Optional[str]): Default reference string
+- `name`, `track`, `project_name`: As above
+
+**Score Method:**
+- `output` (str): The output string to check
+- `reference` (Optional[str]): Reference to find (uses default if not provided)
+
+**Returns:** `1.0` if reference is in output, `0.0` otherwise
+
+<Note>
+You must provide a reference either at initialization or when calling `score()`.
+</Note>
+
+### LevenshteinRatio
+
+Calculates the Levenshtein similarity ratio between two strings.
+
+```python
+from opik.evaluation.metrics import LevenshteinRatio
+
+metric = LevenshteinRatio(case_sensitive=True)
+result = metric.score(
+    output="Hello, World!",
+    reference="Hello, World"
+)
+
+print(result.value)  # 0.96 (high similarity)
+```
+
+**Parameters:**
+- `case_sensitive` (bool): Case-sensitive comparison (default: `False`)
+- `name`, `track`, `project_name`: As above
+
+**Score Method:**
+- `output` (str): The output string
+- `reference` (str): The reference string
+
+**Returns:** Similarity score between `0.0` (completely different) and `1.0` (identical)
+
+### RegexMatch
+
+Checks if an output matches a regular expression pattern.
+
+```python
+import re
+from opik.evaluation.metrics import RegexMatch
+
+# Using a string pattern
+metric = RegexMatch(regex=r"\d{3}-\d{2}-\d{4}")
+result = metric.score(output="My SSN is 123-45-6789")
+print(result.value)  # 1.0
+
+# Using a compiled pattern
+pattern = re.compile(r"[A-Z]{2}\d{5}")
+metric = RegexMatch(regex=pattern)
+result = metric.score(output="ID: AB12345")
+print(result.value)  # 1.0
+```
+
+**Parameters:**
+- `regex` (str | re.Pattern): Regex pattern to match
+- `name`, `track`, `project_name`: As above
+
+**Score Method:**
+- `output` (str): The string to check
+
+**Returns:** `1.0` if pattern matches, `0.0` otherwise
+
+### IsJson
+
+Checks if a string is valid JSON.
+
+```python
+from opik.evaluation.metrics import IsJson
+
+metric = IsJson()
+
+result = metric.score(output='{"key": "value"}')
+print(result.value)  # 1.0
+
+result = metric.score(output='Not JSON')
+print(result.value)  # 0.0
+```
+
+**Score Method:**
+- `output` (str): The string to validate
+
+**Returns:** `1.0` if valid JSON, `0.0` otherwise
+
+## NLP Similarity Metrics
+
+### BLEU Score
+
+Measures n-gram overlap between output and reference text, commonly used for machine translation evaluation.
+
+```python
+from opik.evaluation.metrics import SentenceBLEU, CorpusBLEU
+
+# Sentence-level BLEU
+metric = SentenceBLEU(n_grams=4, smoothing_method="method1")
+result = metric.score(
+    output="the cat is on the mat",
+    reference="the cat is on the mat"
+)
+print(result.value)  # 1.0
+
+# Multiple references
+result = metric.score(
+    output="the cat sits on the mat",
+    reference=["the cat is on the mat", "a cat is on the mat"]
+)
+
+# Corpus-level BLEU
+corpus_metric = CorpusBLEU(n_grams=4)
+result = corpus_metric.score(
+    output=["the cat is on the mat", "there is a cat here"],
+    reference=[
+        "the cat is on the mat",
+        ["there is a cat here", "there is cat here"]
+    ]
+)
+```
+
+**Parameters:**
+- `n_grams` (int): Maximum n-gram order (default: `4`)
+- `smoothing_method` (str): NLTK smoothing method (default: `"method1"`)
+- `weights` (Optional[List[float]]): Custom n-gram weights (must sum to 1.0)
+- `name`, `track`, `project_name`: As above
+
+**Returns:** BLEU score between `0.0` and `1.0`
+
+<Warning>
+Requires `nltk` package: `pip install nltk`
+</Warning>
+
+### ROUGE Score
+
+Recall-Oriented Understudy for Gisting Evaluation, primarily used for summarization tasks.
+
+```python
+from opik.evaluation.metrics import ROUGE
+
+# ROUGE-1 (unigram)
+metric = ROUGE(rouge_type="rouge1")
+result = metric.score(
+    output="The quick brown fox jumps over the lazy dog.",
+    reference="The quick brown fox jumps over the lazy dog."
+)
+print(result.value)  # 1.0
+
+# ROUGE-L (longest common subsequence)
+metric = ROUGE(rouge_type="rougeL", use_stemmer=True)
+result = metric.score(
+    output="The cats are jumping",
+    reference="The cat jumps"
+)
+```
+
+**Parameters:**
+- `rouge_type` (str): Type of ROUGE (default: `"rouge1"`)
+  - `"rouge1"`: Unigram-based
+  - `"rouge2"`: Bigram-based
+  - `"rougeL"`: Longest common subsequence
+  - `"rougeLsum"`: LCS split by newlines
+- `use_stemmer` (bool): Use stemming (default: `False`)
+- `split_summaries` (bool): Split into sentences (default: `False`)
+- `tokenizer` (Optional): Custom tokenizer
+- `name`, `track`, `project_name`: As above
+
+**Returns:** ROUGE F1 score between `0.0` and `1.0`
+
+<Warning>
+Requires `rouge-score` package: `pip install rouge-score`
+</Warning>
+
+### BERTScore
+
+Uses BERT embeddings to measure semantic similarity.
+
+```python
+from opik.evaluation.metrics import BERTScore
+
+metric = BERTScore()
+result = metric.score(
+    output="The cat sat on the mat",
+    reference="A cat was sitting on the mat"
+)
+print(result.value)  # High score due to semantic similarity
+```
+
+<Warning>
+Requires `bert-score` package and a BERT model.
+</Warning>
+
+### METEOR
+
+Metric for Evaluation of Translation with Explicit ORdering, considers synonyms and stemming.
+
+```python
+from opik.evaluation.metrics import METEOR
+
+metric = METEOR()
+result = metric.score(
+    output="the cat is on the mat",
+    reference="the cat sits on the mat"
+)
+```
+
+### Additional NLP Metrics
+
+#### GLEU
+
+Google BLEU variant designed for sentence-level evaluation.
+
+```python
+from opik.evaluation.metrics import GLEU
+
+metric = GLEU()
+result = metric.score(
+    output="the cat is on the mat",
+    reference="the cat sits on the mat"
+)
+```
+
+#### ChrF
+
+Character n-gram F-score, useful for morphologically rich languages.
+
+```python
+from opik.evaluation.metrics import ChrF
+
+metric = ChrF()
+result = metric.score(
+    output="the cat is on the mat",
+    reference="the cat sits on the mat"
+)
+```
+
+## Distribution Metrics
+
+Compare probability distributions (useful for comparing model outputs).
+
+```python
+from opik.evaluation.metrics import (
+    KLDivergence,
+    JSDivergence,
+    JSDistance,
+)
+
+# KL Divergence
+kl_metric = KLDivergence()
+result = kl_metric.score(
+    output=[0.4, 0.3, 0.3],
+    reference=[0.5, 0.3, 0.2]
+)
+
+# Jensen-Shannon Divergence
+js_metric = JSDivergence()
+result = js_metric.score(
+    output=[0.4, 0.3, 0.3],
+    reference=[0.5, 0.3, 0.2]
+)
+```
+
+## Ranking Metrics
+
+### SpearmanRanking
+
+Measures rank correlation between two lists.
+
+```python
+from opik.evaluation.metrics import SpearmanRanking
+
+metric = SpearmanRanking()
+result = metric.score(
+    output=[1, 2, 3, 4, 5],
+    reference=[1, 3, 2, 4, 5]
+)
+print(result.value)  # Correlation coefficient
+```
+
+## Content Analysis Metrics
+
+### Sentiment
+
+Analyzes sentiment of text.
+
+```python
+from opik.evaluation.metrics import Sentiment, VADERSentiment
+
+# Basic sentiment
+sentiment = Sentiment()
+result = sentiment.score(output="This is wonderful!")
+
+# VADER sentiment (more nuanced)
+vader = VADERSentiment()
+result = vader.score(output="This is wonderful!")
+```
+
+### Tone
+
+Analyzes the tone of text.
+
+```python
+from opik.evaluation.metrics import Tone
+
+metric = Tone()
+result = metric.score(output="Please complete this task immediately.")
+```
+
+### Readability
+
+Measures text readability.
+
+```python
+from opik.evaluation.metrics import Readability
+
+metric = Readability()
+result = metric.score(
+    output="The quick brown fox jumps over the lazy dog."
+)
+```
+
+## Security Metrics
+
+### PromptInjection
+
+Detects potential prompt injection attempts.
+
+```python
+from opik.evaluation.metrics import PromptInjection
+
+metric = PromptInjection()
+result = metric.score(
+    output="Ignore previous instructions and..."
+)
+```
+
+### LanguageAdherence
+
+Checks if output adheres to expected language.
+
+```python
+from opik.evaluation.metrics import LanguageAdherenceMetric
+
+metric = LanguageAdherenceMetric()
+result = metric.score(
+    output="Hello, how are you?",
+    expected_language="en"
+)
+```
+
+## When to Use Heuristic Metrics
+
+<Tip>
+Use heuristic metrics when you need:
+- **Fast evaluation**: No API calls required
+- **Deterministic results**: Same input always produces same output
+- **Cost-effective scaling**: Evaluate millions of examples without API costs
+- **Exact matching**: Validate specific formats or values
+</Tip>
+
+<Info>
+Heuristic metrics work best for:
+- Structured outputs (JSON, specific formats)
+- Exact match validation
+- Translation and summarization tasks
+- CI/CD pipelines
+- Initial filtering before LLM-as-judge evaluation
+</Info>
+
+<Warning>
+Heuristic metrics have limitations:
+- Cannot understand semantic meaning
+- May miss paraphrased correct answers
+- Limited ability to evaluate subjective quality
+- Not suitable for open-ended generation tasks
+</Warning>
+
+## Combining Metrics
+
+Use multiple metrics together for comprehensive evaluation:
+
+```python
+from opik.evaluation.metrics import Contains, LevenshteinRatio, IsJson
+
+# Validate JSON output that contains specific content
+json_check = IsJson()
+contains_check = Contains(reference="success")
+similarity_check = LevenshteinRatio()
+
+output = '{"status": "success", "message": "Task completed"}'
+
+# Check all criteria
+if json_check.score(output).value == 1.0:
+    if contains_check.score(output).value == 1.0:
+        print("Valid output")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="LLM-as-Judge Metrics" icon="gavel" href="/metrics/llm-as-judge">
+    Learn about AI-powered evaluation
+  </Card>
+  <Card title="Custom Metrics" icon="code" href="/metrics/custom-metrics">
+    Create your own metrics
+  </Card>
+</CardGroup>

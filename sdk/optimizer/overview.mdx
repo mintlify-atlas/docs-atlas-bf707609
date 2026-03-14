@@ -1,0 +1,178 @@
+---
+title: "Optimizer SDK Overview"
+description: "Automatically optimize your prompts and agents for better LLM performance"
+---
+
+# Optimizer SDK Overview
+
+The Opik Optimizer SDK is a powerful toolkit for automatically improving your prompts and agents. It provides a suite of optimization algorithms with a **standardized API**, making it easy to switch between algorithms or chain them together for compound improvements.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Standardized API" icon="code">
+    All optimizers follow the same interface with `optimize_prompt()`, making it simple to switch algorithms or chain results.
+  </Card>
+  <Card title="Multiple Algorithms" icon="brain">
+    Choose from evolutionary, Bayesian, meta-prompting, GEPA, and parameter optimization approaches.
+  </Card>
+  <Card title="Tool Optimization" icon="wrench">
+    Optimize tool descriptions and parameters alongside prompts (MCP support included).
+  </Card>
+  <Card title="Multimodal Support" icon="image">
+    Work with text, images, audio, and video content in your prompts.
+  </Card>
+</CardGroup>
+
+## How It Works
+
+The optimizer refines your prompts through an iterative process:
+
+<Steps>
+  <Step title="Define Your Prompt">
+    Create a `ChatPrompt` with your initial prompt template and any tools/functions your agent needs.
+  </Step>
+  <Step title="Prepare Evaluation Data">
+    Provide a dataset and metric function to measure prompt performance.
+  </Step>
+  <Step title="Run Optimization">
+    Choose an optimizer algorithm and let it generate improved prompt variations.
+  </Step>
+  <Step title="Get Results">
+    Receive an optimized prompt with performance metrics and optimization history.
+  </Step>
+</Steps>
+
+## Available Optimizers
+
+<AccordionGroup>
+  <Accordion title="EvolutionaryOptimizer">
+    Uses genetic algorithms to evolve prompts over generations. Best for finding creative prompt variations through mutation and crossover operations.
+    
+    **Best for:** Complex optimization tasks requiring exploration of diverse prompt variations.
+  </Accordion>
+  
+  <Accordion title="FewShotBayesianOptimizer">
+    Adds optimal few-shot examples to your prompts using Bayesian optimization.
+    
+    **Best for:** Tasks where providing examples significantly improves performance.
+  </Accordion>
+  
+  <Accordion title="MetaPromptOptimizer">
+    Uses LLM-based meta-reasoning to iteratively improve prompts by analyzing performance.
+    
+    **Best for:** Refining prompts for clarity, best practices, and specific metrics.
+  </Accordion>
+  
+  <Accordion title="GepaOptimizer">
+    Genetic-Pareto optimization balancing multiple objectives.
+    
+    **Best for:** Complex tasks requiring trade-offs between different quality metrics.
+  </Accordion>
+  
+  <Accordion title="HierarchicalReflectiveOptimizer (HRPO)">
+    Multi-stage reflective optimization with hierarchical analysis.
+    
+    **Best for:** Complex reasoning tasks requiring deep analysis.
+  </Accordion>
+  
+  <Accordion title="ParameterOptimizer">
+    Optimizes LLM parameters (temperature, top_p, etc.) using Bayesian optimization.
+    
+    **Best for:** Fine-tuning model behavior when you have a good prompt.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Example
+
+Here's a simple example using the MetaPromptOptimizer:
+
+```python
+from opik.evaluation.metrics import LevenshteinRatio
+from opik_optimizer import MetaPromptOptimizer, ChatPrompt
+from opik_optimizer.datasets import hotpot
+
+# Load a sample dataset
+dataset = hotpot(count=300)
+
+# Define your prompt
+prompt = ChatPrompt(
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "{question}"}
+    ]
+)
+
+# Create optimizer
+optimizer = MetaPromptOptimizer(
+    model="gpt-4o-mini",
+    prompts_per_round=4,
+    n_threads=16
+)
+
+# Define metric function
+def levenshtein_ratio(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"], 
+        output=llm_output
+    )
+
+# Run optimization
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=levenshtein_ratio,
+    n_samples=150
+)
+
+# Display results
+result.display()
+```
+
+## Optimization Chaining
+
+One of the most powerful features is the ability to chain optimizers:
+
+```python
+# First, optimize with few-shot examples
+few_shot_result = few_shot_optimizer.optimize_prompt(
+    prompt=initial_prompt,
+    dataset=dataset,
+    metric=metric
+)
+
+# Then refine with meta-prompting
+final_result = meta_optimizer.optimize_prompt(
+    prompt=ChatPrompt.from_result(few_shot_result),
+    dataset=dataset,
+    metric=metric
+)
+```
+
+## Features at a Glance
+
+| Feature | Description |
+|---------|-------------|
+| **Counter Tracking** | Built-in LLM and tool call counters for monitoring usage |
+| **Type Safety** | Full type hints and validation for robust development |
+| **Backward Compatibility** | Original parameters preserved through kwargs extraction |
+| **MCP Support** | Built-in support for Model Context Protocol tool calling |
+| **Comet Integration** | Optional logging to Comet for experiment tracking |
+| **Multimodal Prompts** | Supports OpenAI-style content parts (text, image, audio, video) |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/sdk/optimizer/installation">
+    Get started by installing the Optimizer SDK
+  </Card>
+  <Card title="Agents" icon="robot" href="/sdk/optimizer/agents">
+    Learn about agent optimization and custom agents
+  </Card>
+  <Card title="Algorithms" icon="chart-line" href="/sdk/optimizer/algorithms">
+    Explore all available optimization algorithms
+  </Card>
+  <Card title="API Reference" icon="book" href="/sdk/optimizer/overview">
+    View the complete API documentation
+  </Card>
+</CardGroup>

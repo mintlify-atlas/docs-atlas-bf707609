@@ -1,0 +1,136 @@
+---
+title: "API Overview"
+description: "Introduction to the Opik REST API for managing traces, datasets, experiments, and more"
+---
+
+## Introduction
+
+The Opik REST API is currently in beta and subject to change. If you have any questions or feedback about the APIs, please reach out on [GitHub](https://github.com/comet-ml/opik).
+
+All of the methods listed in this documentation are used by either the SDK or the UI to interact with the Opik server. As a result, the methods have been optimized for these use-cases in mind.
+
+## API Versions
+
+The current API version is `v1`. All endpoints are prefixed with `/api/v1/private/`.
+
+## Deployment Options
+
+Opik includes two main deployment options that result in slightly different API usage:
+
+### Self-hosted Opik Instance
+
+For self-hosted deployments, you will simply need to specify the URL as `http://localhost:5173/api/<endpoint_path>` or similar. This is the default option for the docs.
+
+**Example Request:**
+
+```bash
+curl -X GET 'http://localhost:5173/api/v1/private/projects' \
+  -H 'Accept: application/json'
+```
+
+### Opik Cloud
+
+For Opik Cloud deployments, you will need to specify the Opik API Key and Opik Workspace in the header. The format of the header should be:
+
+```json
+{
+  "Comet-Workspace": "your-workspace-name",
+  "authorization": "your-api-key"
+}
+```
+
+**Example Request:**
+
+```bash
+curl -X GET 'https://www.comet.com/opik/api/v1/private/projects' \
+  -H 'Accept: application/json' \
+  -H 'Comet-Workspace: your-workspace-name' \
+  -H 'authorization: your-api-key'
+```
+
+<Note>
+  Do take note here that the authorization header value does not include the `Bearer ` prefix.
+</Note>
+
+## Base URLs
+
+<ParamField path="Local Server" type="string" default="http://localhost:5173/api">
+  Use this URL for self-hosted Opik instances
+</ParamField>
+
+<ParamField path="Opik Cloud" type="string" default="https://www.comet.com/opik/api">
+  Use this URL for Opik Cloud deployments
+</ParamField>
+
+## Common Parameters
+
+Many API endpoints support pagination and filtering:
+
+<ParamField query="page" type="integer" default="1">
+  Page number for pagination (minimum: 1)
+</ParamField>
+
+<ParamField query="size" type="integer" default="10">
+  Number of items per page (minimum: 1)
+</ParamField>
+
+<ParamField query="sorting" type="string">
+  Sorting criteria for results
+</ParamField>
+
+<ParamField query="filters" type="string">
+  Filter criteria in JSON format
+</ParamField>
+
+## Response Format
+
+All API responses are returned in JSON format. Successful responses typically return:
+
+- `200 OK` - Request succeeded
+- `201 Created` - Resource created successfully
+- `204 No Content` - Request succeeded with no response body
+
+Error responses include:
+
+- `400 Bad Request` - Invalid request parameters
+- `401 Unauthorized` - Authentication required
+- `403 Forbidden` - Access denied
+- `404 Not Found` - Resource not found
+- `409 Conflict` - Resource conflict
+- `422 Unprocessable Entity` - Validation error
+
+## Error Response Schema
+
+```json
+{
+  "code": 400,
+  "message": "Error description",
+  "details": "Additional error details"
+}
+```
+
+## Rate Limiting
+
+API rate limits depend on your deployment type:
+
+- **Self-hosted**: No rate limits by default
+- **Opik Cloud**: Rate limits apply based on your subscription tier
+
+## API Resources
+
+The Opik API provides endpoints for managing:
+
+- [Traces](/api/traces) - Track LLM application execution traces
+- [Datasets](/api/datasets) - Manage test datasets and versions
+- [Experiments](/api/experiments) - Run and track experiments
+- [Feedback Scores](/api/feedback-scores) - Add feedback and evaluations
+- [Prompts](/api/prompts) - Version and manage prompts
+
+## SDK Support
+
+While you can use the REST API directly, we recommend using the official SDKs:
+
+- [Python SDK](/python-sdk-reference)
+- [TypeScript SDK](/typescript-sdk-reference)
+
+The SDKs provide a more convenient interface and handle authentication, retries, and other concerns automatically.

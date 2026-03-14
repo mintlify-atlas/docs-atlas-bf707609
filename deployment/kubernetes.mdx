@@ -1,0 +1,475 @@
+---
+title: "Kubernetes Deployment"
+description: "Deploy Opik to Kubernetes for production-ready, scalable observability"
+---
+
+## Overview
+
+Deploy Opik to Kubernetes using Helm for production-grade scalability, high availability, and operational excellence. This deployment method is designed for teams running LLM applications at scale.
+
+<Note>
+  Kubernetes deployment is recommended for production workloads. For development and testing, use [Docker Compose](/deployment/docker-compose).
+</Note>
+
+## Prerequisites
+
+<Steps>
+  <Step title="Kubernetes Cluster">
+    - Kubernetes version 1.24 or later
+    - Cluster with at least 8GB RAM and 4 CPU cores
+    - `kubectl` configured to access your cluster
+  </Step>
+
+  <Step title="Helm">
+    - Helm 3.8 or later installed
+    - [Install Helm](https://helm.sh/docs/intro/install/)
+  </Step>
+
+  <Step title="Storage">
+    - Persistent volume provisioner configured
+    - At least 50GB storage available for databases
+  </Step>
+</Steps>
+
+## Quick Install
+
+<Steps>
+  <Step title="Add Helm Repository">
+    ```bash
+    helm repo add opik https://comet-ml.github.io/opik
+    helm repo update
+    ```
+  </Step>
+
+  <Step title="Install Opik">
+    ```bash
+    # Create namespace
+    kubectl create namespace opik
+
+    # Install with default values
+    helm install opik opik/opik \
+      --namespace opik \
+      --wait
+    ```
+
+    <Info>
+      First installation takes 5-10 minutes to pull images and start all services.
+    </Info>
+  </Step>
+
+  <Step title="Verify Installation">
+    ```bash
+    # Check pod status
+    kubectl get pods -n opik
+
+    # All pods should be in Running state
+    ```
+
+    Expected output:
+    ```
+    NAME                                READY   STATUS    RESTARTS   AGE
+    opik-backend-xxxxx                  1/1     Running   0          2m
+    opik-frontend-xxxxx                 1/1     Running   0          2m
+    opik-python-backend-xxxxx           1/1     Running   0          2m
+    opik-mysql-0                        1/1     Running   0          2m
+    opik-clickhouse-0                   1/1     Running   0          2m
+    opik-redis-master-0                 1/1     Running   0          2m
+    ```
+  </Step>
+
+  <Step title="Access Opik">
+    **Port Forward (Development/Testing):**
+    ```bash
+    # Forward frontend port
+    kubectl port-forward -n opik svc/opik-frontend 5173:5173
+
+    # Access at http://localhost:5173
+    ```
+
+    **Ingress (Production):**
+    See [Configure Ingress](#configure-ingress) below.
+  </Step>
+</Steps>
+
+## Configuration
+
+### Custom Values File
+
+Create a `values.yaml` file to customize your deployment:
+
+```yaml values.yaml
+# Resource limits
+backend:
+  resources:
+    limits:
+      memory: 4Gi
+      cpu: 2000m
+    requests:
+      memory: 2Gi
+      cpu: 1000m
+
+# Database configuration
+mysql:
+  auth:
+    rootPassword: "your-secure-password"
+    database: "opik"
+  persistence:
+    size: 50Gi
+
+clickhouse:
+  auth:
+    password: "your-secure-password"
+  persistence:
+    size: 100Gi
+
+# Enable ingress
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: opik.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: opik-tls
+      hosts:
+        - opik.example.com
+```
+
+Install with custom values:
+```bash
+helm install opik opik/opik \
+  --namespace opik \
+  --values values.yaml \
+  --wait
+```
+
+### Configure Ingress
+
+<Tabs>
+  <Tab title="NGINX Ingress">
+    ```yaml
+    ingress:
+      enabled: true
+      className: nginx
+      annotations:
+        cert-manager.io/cluster-issuer: letsencrypt-prod
+        nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+      hosts:
+        - host: opik.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+      tls:
+        - secretName: opik-tls
+          hosts:
+            - opik.example.com
+    ```
+  </Tab>
+
+  <Tab title="AWS ALB">
+    ```yaml
+    ingress:
+      enabled: true
+      className: alb
+      annotations:
+        alb.ingress.kubernetes.io/scheme: internet-facing
+        alb.ingress.kubernetes.io/target-type: ip
+        alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:...
+      hosts:
+        - host: opik.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+    ```
+  </Tab>
+
+  <Tab title="GCP Load Balancer">
+    ```yaml
+    ingress:
+      enabled: true
+      className: gce
+      annotations:
+        kubernetes.io/ingress.global-static-ip-name: opik-ip
+        networking.gke.io/managed-certificates: opik-cert
+      hosts:
+        - host: opik.example.com
+          paths:
+            - path: /
+              pathType: Prefix
+    ```
+  </Tab>
+</Tabs>
+
+### High Availability
+
+For production deployments, enable HA mode:
+
+```yaml values.yaml
+# Multiple backend replicas
+backend:
+  replicaCount: 3
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+frontend:
+  replicaCount: 2
+
+pythonBackend:
+  replicaCount: 2
+
+# Redis Sentinel for HA
+redis:
+  sentinel:
+    enabled: true
+  master:
+    persistence:
+      enabled: true
+
+# MySQL replication
+mysql:
+  architecture: replication
+  secondary:
+    replicaCount: 1
+```
+
+### Auto-scaling
+
+Enable horizontal pod autoscaling:
+
+```yaml values.yaml
+backend:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+pythonBackend:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 70
+```
+
+## Advanced Configuration
+
+<AccordionGroup>
+  <Accordion title="External Databases" icon="database">
+    Use existing MySQL and ClickHouse instances:
+
+    ```yaml
+    # Disable built-in databases
+    mysql:
+      enabled: false
+    clickhouse:
+      enabled: false
+
+    # Configure external connections
+    externalDatabase:
+      mysql:
+        host: mysql.example.com
+        port: 3306
+        database: opik
+        username: opik
+        passwordSecret:
+          name: mysql-secret
+          key: password
+      clickhouse:
+        host: clickhouse.example.com
+        port: 9000
+        database: opik
+        username: default
+        passwordSecret:
+          name: clickhouse-secret
+          key: password
+    ```
+  </Accordion>
+
+  <Accordion title="Custom Resource Limits" icon="gauge">
+    Fine-tune resource allocation:
+
+    ```yaml
+    backend:
+      resources:
+        limits:
+          memory: 8Gi
+          cpu: 4000m
+        requests:
+          memory: 4Gi
+          cpu: 2000m
+
+    pythonBackend:
+      resources:
+        limits:
+          memory: 4Gi
+          cpu: 2000m
+        requests:
+          memory: 2Gi
+          cpu: 1000m
+    ```
+  </Accordion>
+
+  <Accordion title="Security Context" icon="shield">
+    Run containers as non-root:
+
+    ```yaml
+    securityContext:
+      runAsNonRoot: true
+      runAsUser: 1000
+      fsGroup: 1000
+      capabilities:
+        drop:
+          - ALL
+    ```
+  </Accordion>
+
+  <Accordion title="Environment Variables" icon="gear">
+    Pass custom environment variables:
+
+    ```yaml
+    backend:
+      extraEnvVars:
+        - name: JAVA_OPTS
+          value: "-Xmx4g -Xms2g"
+        - name: LOG_LEVEL
+          value: "INFO"
+
+    pythonBackend:
+      extraEnvVars:
+        - name: WORKERS
+          value: "4"
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Operations
+
+### Upgrade Opik
+
+```bash
+# Update Helm repository
+helm repo update
+
+# Upgrade to latest version
+helm upgrade opik opik/opik \
+  --namespace opik \
+  --values values.yaml \
+  --wait
+```
+
+### Backup and Restore
+
+<Tabs>
+  <Tab title="MySQL Backup">
+    ```bash
+    # Create backup
+    kubectl exec -n opik opik-mysql-0 -- \
+      mysqldump -u root -p\$MYSQL_ROOT_PASSWORD opik > opik_backup.sql
+
+    # Restore backup
+    kubectl exec -i -n opik opik-mysql-0 -- \
+      mysql -u root -p\$MYSQL_ROOT_PASSWORD opik < opik_backup.sql
+    ```
+  </Tab>
+
+  <Tab title="ClickHouse Backup">
+    ```bash
+    # Create backup
+    kubectl exec -n opik opik-clickhouse-0 -- \
+      clickhouse-client --query "BACKUP DATABASE opik TO Disk('backups', 'opik.zip')"
+
+    # Restore backup
+    kubectl exec -n opik opik-clickhouse-0 -- \
+      clickhouse-client --query "RESTORE DATABASE opik FROM Disk('backups', 'opik.zip')"
+    ```
+  </Tab>
+</Tabs>
+
+### Monitoring
+
+```bash
+# View logs
+kubectl logs -n opik -l app=opik-backend --tail=100 -f
+
+# Check resource usage
+kubectl top pods -n opik
+
+# Describe pod for troubleshooting
+kubectl describe pod -n opik <pod-name>
+```
+
+### Uninstall
+
+```bash
+# Uninstall Opik (keeps PVCs)
+helm uninstall opik --namespace opik
+
+# Delete namespace and all resources (including data)
+kubectl delete namespace opik
+```
+
+<Warning>
+  Deleting the namespace will permanently delete all data. Backup before uninstalling.
+</Warning>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Pods not starting" icon="triangle-exclamation">
+    Check pod events:
+    ```bash
+    kubectl describe pod -n opik <pod-name>
+    ```
+
+    Common issues:
+    - Insufficient resources: Check node capacity
+    - Image pull errors: Verify network connectivity
+    - PVC not bound: Check storage provisioner
+  </Accordion>
+
+  <Accordion title="Database connection errors" icon="database">
+    Verify database connectivity:
+    ```bash
+    # Test MySQL
+    kubectl exec -n opik opik-mysql-0 -- mysql -u root -p\$MYSQL_ROOT_PASSWORD -e "SELECT 1"
+
+    # Test ClickHouse
+    kubectl exec -n opik opik-clickhouse-0 -- clickhouse-client --query "SELECT 1"
+    ```
+  </Accordion>
+
+  <Accordion title="Ingress not working" icon="globe">
+    Check ingress status:
+    ```bash
+    kubectl get ingress -n opik
+    kubectl describe ingress -n opik opik
+    ```
+
+    Verify:
+    - Ingress controller is installed
+    - DNS points to ingress IP
+    - TLS certificates are valid
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure SDK" icon="code" href="/sdk/python/configuration">
+    Connect your application to Kubernetes deployment
+  </Card>
+  <Card title="Production Monitoring" icon="chart-line" href="/production/monitoring">
+    Set up monitoring and alerts
+  </Card>
+  <Card title="Helm Chart Values" icon="book" href="https://github.com/comet-ml/opik/tree/main/deployment/helm_chart/opik">
+    View all configuration options
+  </Card>
+  <Card title="Get Help" icon="slack" href="https://chat.comet.com">
+    Join our Slack community
+  </Card>
+</CardGroup>

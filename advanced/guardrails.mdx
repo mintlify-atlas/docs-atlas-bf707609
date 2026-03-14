@@ -1,0 +1,527 @@
+---
+title: "Guardrails"
+description: "Add safety and content validation to your LLM applications with Opik Guardrails"
+---
+
+Opik Guardrails is a validation service that helps you detect and filter unwanted content in your LLM inputs and outputs. It provides built-in validators for PII detection, topic classification, and extensible support for custom validators.
+
+## Overview
+
+Guardrails allow you to:
+
+- **Detect PII**: Identify and filter personally identifiable information
+- **Filter Topics**: Allow or restrict content based on topic classification
+- **Validate Content**: Ensure inputs and outputs meet your safety requirements
+- **GPU Acceleration**: Optional GPU support for faster inference
+
+## Architecture
+
+Opik Guardrails runs as a separate backend service that can be deployed alongside your application:
+
+```
+Your Application → Guardrails API → Validation Engine → Response
+```
+
+The service supports both CPU and GPU modes with automatic fallback.
+
+## Running Guardrails
+
+### Using Docker
+
+<Steps>
+  <Step title="Build the Image (Optional)">
+    ```bash
+    cd apps/opik-guardrails-backend
+    docker build -t opik-guardrails-backend:latest .
+    ```
+  </Step>
+  
+  <Step title="Run with GPU Support">
+    ```bash
+    docker run -p 5000:5000 --gpus all opik-guardrails-backend:latest
+    ```
+  </Step>
+  
+  <Step title="Run with CPU Only">
+    ```bash
+    docker run -p 5000:5000 opik-guardrails-backend:latest
+    ```
+  </Step>
+</Steps>
+
+The service will be available at `http://localhost:5000`.
+
+<Info>
+The Guardrails backend automatically detects GPU availability and falls back to CPU if needed.
+</Info>
+
+## Validation Types
+
+### PII Detection
+
+Detect personally identifiable information in text:
+
+```bash
+curl -X POST http://localhost:5000/api/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "My name is John Doe and my email is john.doe@example.com.",
+    "validations": [
+      {
+        "type": "PII",
+        "config": {
+          "entities": ["PERSON", "EMAIL_ADDRESS"],
+          "language": "en",
+          "threshold": 0.5
+        }
+      }
+    ]
+  }'
+```
+
+<CodeGroup>
+```python Python SDK
+import requests
+
+response = requests.post(
+    "http://localhost:5000/api/validate",
+    json={
+        "text": "My name is John Doe and my email is john.doe@example.com.",
+        "validations": [
+            {
+                "type": "PII",
+                "config": {
+                    "entities": ["PERSON", "EMAIL_ADDRESS"],
+                    "language": "en",
+                    "threshold": 0.5
+                }
+            }
+        ]
+    }
+)
+
+result = response.json()
+if not result["validation_passed"]:
+    print("PII detected!")
+    for validation in result["validations"]:
+        if validation["type"] == "PII":
+            entities = validation["validation_details"]["detected_entities"]
+            print(f"Found: {entities}")
+```
+
+```typescript TypeScript/JavaScript
+const response = await fetch('http://localhost:5000/api/validate', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    text: 'My name is John Doe and my email is john.doe@example.com.',
+    validations: [
+      {
+        type: 'PII',
+        config: {
+          entities: ['PERSON', 'EMAIL_ADDRESS'],
+          language: 'en',
+          threshold: 0.5
+        }
+      }
+    ]
+  })
+});
+
+const result = await response.json();
+if (!result.validation_passed) {
+  console.log('PII detected!');
+  result.validations.forEach(v => {
+    if (v.type === 'PII') {
+      console.log('Found:', v.validation_details.detected_entities);
+    }
+  });
+}
+```
+</CodeGroup>
+
+#### Supported PII Entities
+
+Default entities include:
+- `IP_ADDRESS`
+- `PHONE_NUMBER`
+- `PERSON`
+- `MEDICAL_LICENSE`
+- `URL`
+- `EMAIL_ADDRESS`
+- `IBAN_CODE`
+
+<Tip>
+For a complete list of supported entities, see the [Presidio documentation](https://microsoft.github.io/presidio/supported_entities/).
+</Tip>
+
+#### PII Configuration
+
+<ParamField path="entities" type="array" default="[all entities]">
+  List of specific entity types to detect. If not provided, all supported entity types will be detected.
+</ParamField>
+
+<ParamField path="language" type="string" default="en">
+  Language of the text to analyze
+</ParamField>
+
+<ParamField path="threshold" type="float" default="0.5">
+  Confidence threshold for PII detection (0.0 to 1.0)
+</ParamField>
+
+### Topic Classification
+
+Filter or allow content based on topics:
+
+```bash
+curl -X POST http://localhost:5000/api/validate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "This text is about artificial intelligence and machine learning.",
+    "validations": [
+      {
+        "type": "TOPIC",
+        "config": {
+          "topics": ["politics", "religion", "artificial intelligence"],
+          "threshold": 0.5,
+          "mode": "restrict"
+        }
+      }
+    ]
+  }'
+```
+
+<Tabs>
+  <Tab title="Restrict Mode">
+    Use `"mode": "restrict"` to **block** content matching the specified topics:
+    
+    ```json
+    {
+      "type": "TOPIC",
+      "config": {
+        "topics": ["politics", "violence"],
+        "mode": "restrict",
+        "threshold": 0.5
+      }
+    }
+    ```
+    
+    ✅ Validation **passes** if NONE of the topics match  
+    ❌ Validation **fails** if any topic matches above threshold
+    
+    **Use case:** Content filtering and safety
+  </Tab>
+  
+  <Tab title="Allow Mode">
+    Use `"mode": "allow"` to **require** content matching the specified topics:
+    
+    ```json
+    {
+      "type": "TOPIC",
+      "config": {
+        "topics": ["customer service", "product support"],
+        "mode": "allow",
+        "threshold": 0.5
+      }
+    }
+    ```
+    
+    ✅ Validation **passes** if at least one topic matches  
+    ❌ Validation **fails** if no topics match above threshold
+    
+    **Use case:** Ensuring content relevance
+  </Tab>
+</Tabs>
+
+#### Topic Configuration
+
+<ParamField path="topics" type="array" required>
+  Array of topics to check against. Can be any descriptive strings.
+</ParamField>
+
+<ParamField path="threshold" type="float" default="0.5">
+  Confidence threshold for topic detection (0.0 to 1.0)
+</ParamField>
+
+<ParamField path="mode" type="string" required>
+  Either `"restrict"` (block matching topics) or `"allow"` (require matching topics)
+</ParamField>
+
+## Multiple Validations
+
+Perform multiple validations in a single request:
+
+```python
+import requests
+
+response = requests.post(
+    "http://localhost:5000/api/validate",
+    json={
+        "text": "This is about AI. Contact me at john@example.com.",
+        "validations": [
+            {
+                "type": "TOPIC",
+                "config": {
+                    "topics": ["politics", "artificial intelligence"],
+                    "threshold": 0.5,
+                    "mode": "restrict"
+                }
+            },
+            {
+                "type": "PII",
+                "config": {
+                    "entities": ["EMAIL_ADDRESS", "PERSON"],
+                    "language": "en",
+                    "threshold": 0.5
+                }
+            }
+        ]
+    }
+)
+
+result = response.json()
+
+# Overall validation status
+if result["validation_passed"]:
+    print("All validations passed")
+else:
+    print("Some validations failed")
+
+# Check individual validations
+for validation in result["validations"]:
+    print(f"\n{validation['type']}:")
+    print(f"  Passed: {validation['validation_passed']}")
+    print(f"  Details: {validation['validation_details']}")
+```
+
+## Response Format
+
+Example response structure:
+
+```json
+{
+  "validation_passed": false,
+  "validations": [
+    {
+      "validation_passed": false,
+      "type": "TOPIC",
+      "validation_config": {
+        "topics": ["politics", "artificial intelligence"],
+        "threshold": 0.5,
+        "mode": "restrict"
+      },
+      "validation_details": {
+        "matched_topics_scores": {
+          "artificial intelligence": 0.85
+        },
+        "scores": {
+          "politics": 0.12,
+          "artificial intelligence": 0.85
+        }
+      }
+    },
+    {
+      "validation_passed": false,
+      "type": "PII",
+      "validation_config": {
+        "entities": ["EMAIL_ADDRESS", "PERSON"],
+        "language": "en",
+        "threshold": 0.5
+      },
+      "validation_details": {
+        "detected_entities": {
+          "EMAIL_ADDRESS": [
+            {
+              "start": 24,
+              "end": 40,
+              "score": 1.0,
+              "text": "john@example.com"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
+```
+
+## Configuration
+
+Configure the Guardrails service using environment variables:
+
+<ParamField path="OPIK_GUARDRAILS_DEVICE" type="string" default="cuda:0 or cpu">
+  Device for model inference. Defaults to `cuda:0` if GPU is available, otherwise `cpu`.
+</ParamField>
+
+<ParamField path="CUDA_VISIBLE_DEVICES" type="string">
+  Control which GPUs are visible to the container.
+</ParamField>
+
+Example:
+
+```bash
+docker run -p 5000:5000 --gpus all \
+  -e OPIK_GUARDRAILS_DEVICE=cuda:1 \
+  opik-guardrails-backend:latest
+```
+
+## Integration Patterns
+
+### Pre-Processing Validation
+
+Validate user inputs before sending to LLM:
+
+```python
+import requests
+import openai
+
+def validate_input(text: str) -> bool:
+    response = requests.post(
+        "http://localhost:5000/api/validate",
+        json={
+            "text": text,
+            "validations": [
+                {
+                    "type": "PII",
+                    "config": {"threshold": 0.7}
+                },
+                {
+                    "type": "TOPIC",
+                    "config": {
+                        "topics": ["harmful content", "hate speech"],
+                        "mode": "restrict",
+                        "threshold": 0.6
+                    }
+                }
+            ]
+        }
+    )
+    return response.json()["validation_passed"]
+
+def safe_chat(user_message: str):
+    # Validate input first
+    if not validate_input(user_message):
+        return "I cannot process this request due to content policy."
+    
+    # Proceed with LLM call
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": user_message}]
+    )
+    return response.choices[0].message.content
+```
+
+### Post-Processing Validation
+
+Validate LLM outputs before returning to users:
+
+```python
+def safe_generate(prompt: str) -> str:
+    # Generate response
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    output = response.choices[0].message.content
+    
+    # Validate output
+    validation = requests.post(
+        "http://localhost:5000/api/validate",
+        json={
+            "text": output,
+            "validations": [
+                {
+                    "type": "PII",
+                    "config": {"threshold": 0.7}
+                }
+            ]
+        }
+    ).json()
+    
+    if not validation["validation_passed"]:
+        # Redact or regenerate
+        return "[Response contained sensitive information]"
+    
+    return output
+```
+
+### With Opik Tracing
+
+Combine guardrails with Opik tracing:
+
+```python
+import opik
+import requests
+
+client = opik.Opik()
+
+@opik.track()
+def chat_with_guardrails(user_message: str):
+    # Validate input
+    validation_result = requests.post(
+        "http://localhost:5000/api/validate",
+        json={
+            "text": user_message,
+            "validations": [{"type": "PII", "config": {}}]
+        }
+    ).json()
+    
+    # Log validation result
+    opik.opik_context.update_current_span(
+        metadata={"guardrails_passed": validation_result["validation_passed"]}
+    )
+    
+    if not validation_result["validation_passed"]:
+        return "Invalid input"
+    
+    # Continue with LLM call...
+    return "Safe response"
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Layer Your Defenses" icon="layer-group">
+    Combine multiple validation types for comprehensive protection
+  </Card>
+  
+  <Card title="Tune Thresholds" icon="sliders">
+    Adjust confidence thresholds based on your risk tolerance
+  </Card>
+  
+  <Card title="Monitor Performance" icon="gauge">
+    Track validation latency and adjust GPU/CPU allocation
+  </Card>
+  
+  <Card title="Test Thoroughly" icon="vial">
+    Validate with real-world examples before production
+  </Card>
+  
+  <Card title="Handle Failures Gracefully" icon="shield-check">
+    Provide clear feedback when validation fails
+  </Card>
+  
+  <Card title="Cache When Possible" icon="database">
+    Cache validation results for identical inputs
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prompt Playground" icon="flask" href="/advanced/prompt-playground">
+    Test prompts with guardrails in the playground
+  </Card>
+  
+  <Card title="Tracing" icon="chart-network" href="/tracing/log-traces">
+    Track guardrails validation in your traces
+  </Card>
+  
+  <Card title="Evaluation" icon="clipboard-check" href="/evaluation/overview">
+    Include guardrails in your evaluation pipeline
+  </Card>
+  
+  <Card title="Agent Optimizer" icon="chart-line" href="/advanced/agent-optimizer">
+    Optimize prompts while maintaining safety
+  </Card>
+</CardGroup>

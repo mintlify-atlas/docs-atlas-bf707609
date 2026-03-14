@@ -1,0 +1,674 @@
+---
+title: Client API Reference
+description: Complete API reference for the Opik TypeScript client
+---
+
+## OpikClient
+
+The `OpikClient` class (exported as `Opik`) is the main entry point for interacting with the Opik platform.
+
+### Constructor
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik(config?);
+```
+
+<ParamField path="config" type="Partial<OpikConfig>">
+  Optional configuration object. See [Configuration](/sdk/typescript/configuration) for details.
+</ParamField>
+
+## Tracing Methods
+
+### trace()
+
+Create a new trace to track a complete execution flow.
+
+```typescript
+const trace = client.trace(traceData);
+```
+
+<ParamField path="traceData" type="TraceData" required>
+  Trace configuration object.
+</ParamField>
+
+<ResponseField name="trace" type="Trace">
+  A Trace object for managing the trace lifecycle.
+</ResponseField>
+
+**TraceData Properties:**
+
+<ParamField path="name" type="string" required>
+  Human-readable name for the trace.
+</ParamField>
+
+<ParamField path="input" type="Record<string, unknown>">
+  Input data for the trace (e.g., user query, parameters).
+</ParamField>
+
+<ParamField path="output" type="Record<string, unknown>">
+  Output data from the trace (e.g., generated response).
+</ParamField>
+
+<ParamField path="metadata" type="Record<string, unknown>">
+  Additional metadata to attach to the trace.
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Tags for categorizing the trace.
+</ParamField>
+
+<ParamField path="projectName" type="string">
+  Override the default project name for this trace.
+</ParamField>
+
+<ParamField path="startTime" type="Date">
+  Trace start time (defaults to current time).
+</ParamField>
+
+<ParamField path="endTime" type="Date">
+  Trace end time.
+</ParamField>
+
+**Example:**
+
+```typescript
+const trace = client.trace({
+  name: "chatbot-request",
+  input: { message: "What is the weather?" },
+  output: { response: "The weather is sunny." },
+  metadata: { userId: "user-123", model: "gpt-4" },
+  tags: ["production", "chatbot"],
+});
+
+trace.end();
+```
+
+### flush()
+
+Flush all pending traces and spans to the API.
+
+```typescript
+await client.flush();
+```
+
+<Note>
+  Always call `flush()` before your application exits to ensure all data is sent.
+</Note>
+
+## Dataset Methods
+
+### getDataset()
+
+Retrieve an existing dataset by name.
+
+```typescript
+const dataset = await client.getDataset<T>(name);
+```
+
+<ParamField path="name" type="string" required>
+  The name of the dataset to retrieve.
+</ParamField>
+
+<ParamField path="T" type="type parameter" default="DatasetItemData">
+  TypeScript type for dataset items.
+</ParamField>
+
+<ResponseField name="dataset" type="Dataset<T>">
+  The retrieved dataset.
+</ResponseField>
+
+**Example:**
+
+```typescript
+type QADataset = {
+  question: string;
+  expected_answer: string;
+};
+
+const dataset = await client.getDataset<QADataset>("qa-eval");
+```
+
+### createDataset()
+
+Create a new dataset.
+
+```typescript
+const dataset = await client.createDataset<T>(name, description?);
+```
+
+<ParamField path="name" type="string" required>
+  The name for the new dataset.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description of the dataset.
+</ParamField>
+
+<ResponseField name="dataset" type="Dataset<T>">
+  The created dataset.
+</ResponseField>
+
+**Example:**
+
+```typescript
+const dataset = await client.createDataset(
+  "customer-queries",
+  "Support ticket dataset for evaluation"
+);
+```
+
+### getOrCreateDataset()
+
+Get an existing dataset or create it if it doesn't exist.
+
+```typescript
+const dataset = await client.getOrCreateDataset<T>(name, description?);
+```
+
+<ParamField path="name" type="string" required>
+  The name of the dataset.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description (used only if creating).
+</ParamField>
+
+**Example:**
+
+```typescript
+const dataset = await client.getOrCreateDataset(
+  "qa-dataset",
+  "Questions and answers for testing"
+);
+```
+
+### getDatasets()
+
+List all datasets.
+
+```typescript
+const datasets = await client.getDatasets<T>(maxResults?);
+```
+
+<ParamField path="maxResults" type="number" default={100}>
+  Maximum number of datasets to return.
+</ParamField>
+
+<ResponseField name="datasets" type="Dataset<T>[]">
+  Array of datasets.
+</ResponseField>
+
+### deleteDataset()
+
+Delete a dataset by name.
+
+```typescript
+await client.deleteDataset(name);
+```
+
+<ParamField path="name" type="string" required>
+  The name of the dataset to delete.
+</ParamField>
+
+## Experiment Methods
+
+### createExperiment()
+
+Create a new experiment for evaluating a model or prompt.
+
+```typescript
+const experiment = await client.createExperiment(options);
+```
+
+<ParamField path="options.datasetName" type="string" required>
+  Name of the dataset to evaluate against.
+</ParamField>
+
+<ParamField path="options.name" type="string">
+  Optional name for the experiment (auto-generated if not provided).
+</ParamField>
+
+<ParamField path="options.experimentConfig" type="Record<string, unknown>">
+  Configuration parameters for the experiment.
+</ParamField>
+
+<ParamField path="options.prompts" type="Prompt[]">
+  Array of Prompt objects to link with the experiment.
+</ParamField>
+
+<ParamField path="options.tags" type="string[]">
+  Tags for categorizing the experiment.
+</ParamField>
+
+**Example:**
+
+```typescript
+const experiment = await client.createExperiment({
+  datasetName: "qa-dataset",
+  name: "gpt-4-evaluation",
+  experimentConfig: {
+    model: "gpt-4",
+    temperature: 0.7,
+  },
+  tags: ["production", "gpt-4"],
+});
+```
+
+### getExperiment()
+
+Get an experiment by name (returns the first match if multiple exist).
+
+```typescript
+const experiment = await client.getExperiment(name);
+```
+
+<ParamField path="name" type="string" required>
+  The name of the experiment.
+</ParamField>
+
+### getExperimentById()
+
+Get an experiment by its unique ID.
+
+```typescript
+const experiment = await client.getExperimentById(id);
+```
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the experiment.
+</ParamField>
+
+### getExperimentsByName()
+
+Get all experiments with a given name.
+
+```typescript
+const experiments = await client.getExperimentsByName(name);
+```
+
+<ParamField path="name" type="string" required>
+  The name to search for.
+</ParamField>
+
+<ResponseField name="experiments" type="Experiment[]">
+  Array of experiments with the given name.
+</ResponseField>
+
+### getDatasetExperiments()
+
+Get all experiments associated with a dataset.
+
+```typescript
+const experiments = await client.getDatasetExperiments(datasetName, maxResults?);
+```
+
+<ParamField path="datasetName" type="string" required>
+  The name of the dataset.
+</ParamField>
+
+<ParamField path="maxResults" type="number" default={100}>
+  Maximum number of experiments to return.
+</ParamField>
+
+### updateExperiment()
+
+Update an experiment's name or configuration.
+
+```typescript
+await client.updateExperiment(id, updates);
+```
+
+<ParamField path="id" type="string" required>
+  The ID of the experiment to update.
+</ParamField>
+
+<ParamField path="updates.name" type="string">
+  New name for the experiment.
+</ParamField>
+
+<ParamField path="updates.experimentConfig" type="Record<string, unknown>">
+  New configuration for the experiment.
+</ParamField>
+
+### deleteExperiment()
+
+Delete an experiment by ID.
+
+```typescript
+await client.deleteExperiment(id);
+```
+
+<ParamField path="id" type="string" required>
+  The ID of the experiment to delete.
+</ParamField>
+
+## Prompt Management Methods
+
+### createPrompt()
+
+Create a new prompt or new version if content differs.
+
+```typescript
+const prompt = await client.createPrompt(options);
+```
+
+<ParamField path="options.name" type="string" required>
+  The name of the prompt.
+</ParamField>
+
+<ParamField path="options.prompt" type="string" required>
+  The prompt template content.
+</ParamField>
+
+<ParamField path="options.type" type="'mustache' | 'jinja2' | 'f_string'" default="mustache">
+  The template engine to use.
+</ParamField>
+
+<ParamField path="options.description" type="string">
+  Description of the prompt.
+</ParamField>
+
+<ParamField path="options.tags" type="string[]">
+  Tags for categorizing the prompt.
+</ParamField>
+
+<ParamField path="options.metadata" type="Record<string, unknown>">
+  Additional metadata for the prompt version.
+</ParamField>
+
+**Example:**
+
+```typescript
+const prompt = await client.createPrompt({
+  name: "summarize",
+  prompt: "Summarize the following text: {{text}}",
+  type: "mustache",
+  description: "Text summarization prompt",
+  tags: ["production"],
+});
+```
+
+### createChatPrompt()
+
+Create a chat prompt with message arrays.
+
+```typescript
+const chatPrompt = await client.createChatPrompt(options);
+```
+
+<ParamField path="options.name" type="string" required>
+  The name of the chat prompt.
+</ParamField>
+
+<ParamField path="options.messages" type="ChatMessage[]" required>
+  Array of chat messages with roles and content.
+</ParamField>
+
+<ParamField path="options.type" type="'mustache' | 'jinja2' | 'f_string'" default="mustache">
+  The template engine to use.
+</ParamField>
+
+**Example:**
+
+```typescript
+const chatPrompt = await client.createChatPrompt({
+  name: "assistant",
+  messages: [
+    { role: "system", content: "You are a helpful assistant" },
+    { role: "user", content: "Help me with {{task}}" },
+  ],
+  type: "mustache",
+});
+```
+
+### getPrompt()
+
+Retrieve a text prompt by name and optional version.
+
+```typescript
+const prompt = await client.getPrompt(options);
+```
+
+<ParamField path="options.name" type="string" required>
+  The name of the prompt.
+</ParamField>
+
+<ParamField path="options.commit" type="string">
+  Optional commit hash for a specific version.
+</ParamField>
+
+<ResponseField name="prompt" type="Prompt | null">
+  The prompt, or null if not found.
+</ResponseField>
+
+### getChatPrompt()
+
+Retrieve a chat prompt by name and optional version.
+
+```typescript
+const chatPrompt = await client.getChatPrompt(options);
+```
+
+<ParamField path="options.name" type="string" required>
+  The name of the chat prompt.
+</ParamField>
+
+<ParamField path="options.commit" type="string">
+  Optional commit hash for a specific version.
+</ParamField>
+
+### searchPrompts()
+
+Search for prompts using Opik Query Language (OQL).
+
+```typescript
+const prompts = await client.searchPrompts(filterString?);
+```
+
+<ParamField path="filterString" type="string">
+  Optional OQL filter string.
+</ParamField>
+
+**Example:**
+
+```typescript
+// Get all prompts
+const allPrompts = await client.searchPrompts();
+
+// Filter by tag
+const prodPrompts = await client.searchPrompts('tags contains "production"');
+
+// Filter by multiple criteria
+const prompts = await client.searchPrompts(
+  'tags contains "alpha" AND name contains "summary"'
+);
+```
+
+### deletePrompts()
+
+Delete multiple prompts by ID.
+
+```typescript
+await client.deletePrompts(ids);
+```
+
+<ParamField path="ids" type="string[]" required>
+  Array of prompt IDs to delete.
+</ParamField>
+
+## Search Methods
+
+### searchTraces()
+
+Search for traces with optional filtering.
+
+```typescript
+const traces = await client.searchTraces(options?);
+```
+
+<ParamField path="options.projectName" type="string">
+  Project name to search in (defaults to client's project).
+</ParamField>
+
+<ParamField path="options.filterString" type="string">
+  OQL filter string.
+</ParamField>
+
+<ParamField path="options.maxResults" type="number" default={1000}>
+  Maximum number of results.
+</ParamField>
+
+<ParamField path="options.truncate" type="boolean" default={true}>
+  Whether to truncate large fields.
+</ParamField>
+
+<ParamField path="options.waitForAtLeast" type="number">
+  Poll until at least this many traces are found.
+</ParamField>
+
+<ParamField path="options.waitForTimeout" type="number" default={60}>
+  Timeout in seconds when using waitForAtLeast.
+</ParamField>
+
+**Example:**
+
+```typescript
+const traces = await client.searchTraces({
+  projectName: "my-project",
+  filterString: 'start_time >= "2024-01-01T00:00:00Z" AND metadata.model = "gpt-4"',
+  maxResults: 50,
+});
+```
+
+### searchThreads()
+
+Search for threads (conversations).
+
+```typescript
+const threads = await client.searchThreads(options?);
+```
+
+Parameters are the same as `searchTraces()`.
+
+### searchSpans()
+
+Search for spans.
+
+```typescript
+const spans = await client.searchSpans(options?);
+```
+
+Parameters are the same as `searchTraces()`.
+
+## Annotation Queue Methods
+
+### createTracesAnnotationQueue()
+
+Create an annotation queue for traces.
+
+```typescript
+const queue = await client.createTracesAnnotationQueue(options);
+```
+
+<ParamField path="options.name" type="string" required>
+  Name of the annotation queue.
+</ParamField>
+
+<ParamField path="options.projectName" type="string">
+  Project name (defaults to client's project).
+</ParamField>
+
+<ParamField path="options.description" type="string">
+  Description of the queue.
+</ParamField>
+
+<ParamField path="options.instructions" type="string">
+  Instructions for reviewers.
+</ParamField>
+
+### createThreadsAnnotationQueue()
+
+Create an annotation queue for threads.
+
+```typescript
+const queue = await client.createThreadsAnnotationQueue(options);
+```
+
+Parameters are the same as `createTracesAnnotationQueue()`.
+
+### getTracesAnnotationQueue()
+
+Get a traces annotation queue by ID.
+
+```typescript
+const queue = await client.getTracesAnnotationQueue(id);
+```
+
+### getThreadsAnnotationQueue()
+
+Get a threads annotation queue by ID.
+
+```typescript
+const queue = await client.getThreadsAnnotationQueue(id);
+```
+
+### getTracesAnnotationQueues()
+
+List all traces annotation queues.
+
+```typescript
+const queues = await client.getTracesAnnotationQueues(options?);
+```
+
+### getThreadsAnnotationQueues()
+
+List all threads annotation queues.
+
+```typescript
+const queues = await client.getThreadsAnnotationQueues(options?);
+```
+
+### deleteTracesAnnotationQueue()
+
+Delete a traces annotation queue.
+
+```typescript
+await client.deleteTracesAnnotationQueue(id);
+```
+
+### deleteThreadsAnnotationQueue()
+
+Delete a threads annotation queue.
+
+```typescript
+await client.deleteThreadsAnnotationQueue(id);
+```
+
+## Utility Functions
+
+### flushAll()
+
+Flush all active Opik clients.
+
+```typescript
+import { flushAll } from "opik";
+
+await flushAll();
+```
+
+<Note>
+  This is a global function, not a method on the client instance.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tracing" icon="route" href="/sdk/typescript/tracing">
+    Learn how to trace your applications
+  </Card>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/typescript/evaluation">
+    Evaluate your models and prompts
+  </Card>
+</CardGroup>

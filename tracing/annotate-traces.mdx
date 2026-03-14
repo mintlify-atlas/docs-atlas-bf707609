@@ -1,0 +1,615 @@
+---
+title: "Annotate Traces"
+description: "Add feedback scores and annotations to traces and spans for quality tracking and evaluation"
+---
+
+Opik allows you to annotate traces and spans with feedback scores, which are essential for tracking quality, performance, and user satisfaction of your LLM applications.
+
+## What are Feedback Scores?
+
+Feedback scores are numerical or categorical values that represent quality metrics for traces and spans. They can come from:
+
+- Automated evaluations (hallucination detection, relevance scoring, etc.)
+- Human annotations (thumbs up/down, quality ratings)
+- User feedback (satisfaction scores, ratings)
+- Business metrics (conversion rates, engagement)
+
+## Adding Feedback Scores
+
+### During Trace Creation
+
+Add scores when creating traces or spans:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(
+    name="customer-query",
+    input={"question": "How do I reset my password?"},
+    output={"answer": "Click on 'Forgot Password'..."},
+    feedback_scores=[
+        {"name": "helpfulness", "value": 0.95},
+        {"name": "accuracy", "value": 1.0, "reason": "Answer is correct"}
+    ]
+)
+trace.end()
+```
+
+### Using opik_context
+
+Add scores from within tracked functions:
+
+```python
+from opik import track, opik_context
+
+@track
+def rag_pipeline(question):
+    context = retrieve_context(question)
+    answer = generate_answer(question, context)
+    
+    # Calculate quality scores
+    relevance_score = calculate_relevance(context, question)
+    
+    # Update trace with scores
+    opik_context.update_current_trace(
+        feedback_scores=[
+            {"name": "answer_relevance", "value": relevance_score}
+        ]
+    )
+    
+    return answer
+```
+
+### Using update_current_span
+
+Add scores to specific spans:
+
+```python
+from opik import track, opik_context
+
+@track(type="llm")
+def call_llm(prompt):
+    response = llm.complete(prompt)
+    
+    # Score the LLM response
+    toxicity_score = check_toxicity(response)
+    
+    opik_context.update_current_span(
+        feedback_scores=[
+            {"name": "toxicity", "value": toxicity_score, "reason": "Automated check"}
+        ]
+    )
+    
+    return response
+```
+
+### After Trace Completion
+
+Add scores to existing traces using the Opik client:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get trace by ID
+trace = client.get_trace(trace_id="trace-123")
+
+# Log feedback score
+trace.log_feedback_score(
+    name="user_satisfaction",
+    value=5.0,
+    reason="User rated 5 stars"
+)
+```
+
+Or use batch operations:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Log scores for multiple traces
+client.log_traces_feedback_scores(
+    project_name="my-project",
+    scores=[
+        {"id": "trace-1", "name": "quality", "value": 0.9},
+        {"id": "trace-2", "name": "quality", "value": 0.8},
+        {"id": "trace-3", "name": "quality", "value": 0.95}
+    ]
+)
+```
+
+## Feedback Score Format
+
+### Required Fields
+
+<ParamField path="name" type="str" required>
+  The name of the feedback metric (e.g., "relevance", "accuracy", "toxicity")
+</ParamField>
+
+<ParamField path="value" type="float" required>
+  The numerical score value
+</ParamField>
+
+### Optional Fields
+
+<ParamField path="reason" type="str">
+  Optional explanation or justification for the score
+</ParamField>
+
+<ParamField path="category_name" type="str">
+  Optional category name for categorical scores
+</ParamField>
+
+<ParamField path="id" type="str">
+  Trace/span ID (required for batch operations)
+</ParamField>
+
+### Examples
+
+```python
+# Numerical score with reason
+{
+    "name": "relevance",
+    "value": 0.85,
+    "reason": "Context partially matches query"
+}
+
+# Categorical score
+{
+    "name": "sentiment",
+    "value": 1.0,
+    "category_name": "positive"
+}
+
+# Simple score
+{
+    "name": "user_rating",
+    "value": 4.5
+}
+```
+
+## Scoring Spans
+
+Add feedback scores to individual spans:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(name="multi-step")
+span = trace.span(name="llm-call", type="llm")
+
+span.update(
+    output={"response": "The capital of France is Paris."},
+    feedback_scores=[
+        {"name": "factual_accuracy", "value": 1.0},
+        {"name": "conciseness", "value": 0.9}
+    ]
+)
+span.end()
+trace.end()
+```
+
+Or log scores after span completion:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(name="workflow")
+span = trace.span(name="retrieval", type="tool")
+span.end()
+
+# Log score to span
+span.log_feedback_score(
+    name="retrieval_quality",
+    value=0.88,
+    reason="Good document coverage"
+)
+
+trace.end()
+```
+
+## Batch Scoring
+
+Score multiple spans at once:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Log scores for multiple spans
+client.log_spans_feedback_scores(
+    scores=[
+        {"id": "span-1", "name": "accuracy", "value": 0.95},
+        {"id": "span-2", "name": "accuracy", "value": 0.87},
+        {"id": "span-3", "name": "accuracy", "value": 0.92, "reason": "High quality output"}
+    ]
+)
+```
+
+## Common Scoring Patterns
+
+### Automated Evaluation
+
+Score traces automatically using evaluation metrics:
+
+```python
+from opik import track, opik_context
+from opik.evaluation.metrics import Hallucination, AnswerRelevance
+
+hallucination_metric = Hallucination()
+relevance_metric = AnswerRelevance()
+
+@track
+def rag_pipeline(question):
+    context = retrieve_documents(question)
+    answer = generate_answer(question, context)
+    
+    # Calculate scores
+    hallucination_score = hallucination_metric.score(
+        input=question,
+        output=answer,
+        context=context
+    )
+    
+    relevance_score = relevance_metric.score(
+        input=question,
+        output=answer,
+        context=context
+    )
+    
+    # Add scores to trace
+    opik_context.update_current_trace(
+        feedback_scores=[
+            {
+                "name": "hallucination",
+                "value": hallucination_score.value,
+                "reason": hallucination_score.reason
+            },
+            {
+                "name": "answer_relevance",
+                "value": relevance_score.value,
+                "reason": relevance_score.reason
+            }
+        ]
+    )
+    
+    return answer
+```
+
+### Human Annotations
+
+Collect and log human feedback:
+
+```python
+import opik
+from opik import track, opik_context
+
+@track
+def chatbot_response(user_message):
+    response = generate_response(user_message)
+    
+    # Get current trace ID for later annotation
+    trace_data = opik_context.get_current_trace_data()
+    trace_id = trace_data.id if trace_data else None
+    
+    # Store trace_id for later human annotation
+    store_for_annotation(trace_id, response)
+    
+    return response
+
+def submit_user_feedback(trace_id, thumbs_up):
+    """Called when user provides feedback."""
+    client = opik.Opik()
+    
+    client.log_traces_feedback_scores(
+        scores=[{
+            "id": trace_id,
+            "name": "user_satisfaction",
+            "value": 1.0 if thumbs_up else 0.0,
+            "category_name": "positive" if thumbs_up else "negative"
+        }]
+    )
+```
+
+### Multi-Metric Scoring
+
+Score traces on multiple dimensions:
+
+```python
+from opik import track, opik_context
+
+@track
+def evaluate_response(question, answer, context):
+    scores = {
+        "relevance": calculate_relevance(answer, question),
+        "accuracy": calculate_accuracy(answer, context),
+        "fluency": calculate_fluency(answer),
+        "completeness": calculate_completeness(answer, question)
+    }
+    
+    opik_context.update_current_trace(
+        feedback_scores=[
+            {"name": metric, "value": score}
+            for metric, score in scores.items()
+        ],
+        metadata={
+            "average_score": sum(scores.values()) / len(scores)
+        }
+    )
+    
+    return scores
+```
+
+### Conditional Scoring
+
+Add scores based on conditions:
+
+```python
+from opik import track, opik_context
+
+@track
+def content_moderation(text):
+    is_safe = check_safety(text)
+    toxicity = calculate_toxicity(text)
+    
+    scores = [{"name": "toxicity", "value": toxicity}]
+    
+    if not is_safe:
+        scores.append({
+            "name": "safety_violation",
+            "value": 1.0,
+            "reason": "Content flagged by safety filter"
+        })
+    
+    opik_context.update_current_span(feedback_scores=scores)
+    
+    return is_safe
+```
+
+## Searching and Filtering by Scores
+
+Retrieve traces by feedback scores:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get traces with low quality scores
+low_quality_traces = client.search_traces(
+    project_name="my-project",
+    filter={
+        "feedback_scores": {
+            "quality": {"$lt": 0.5}  # Quality score less than 0.5
+        }
+    }
+)
+
+# Get traces with high user satisfaction
+high_satisfaction = client.search_traces(
+    project_name="my-project",
+    filter={
+        "feedback_scores": {
+            "user_satisfaction": {"$gte": 0.9}  # Score >= 0.9
+        }
+    }
+)
+```
+
+## Annotation Queues
+
+Use annotation queues to organize traces for human review:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Create annotation queue
+queue = client.create_annotation_queue(
+    name="high-stakes-queries",
+    project_name="customer-support"
+)
+
+# Add traces to queue
+queue.add_traces([
+    {"trace_id": "trace-1"},
+    {"trace_id": "trace-2"},
+])
+
+# Retrieve traces for annotation
+traces_to_review = queue.get_traces(limit=10)
+
+for trace in traces_to_review:
+    # Show to human annotator
+    user_score = get_human_annotation(trace)
+    
+    # Log the score
+    trace.log_feedback_score(
+        name="human_quality_rating",
+        value=user_score,
+        reason="Human annotation"
+    )
+```
+
+## Score Aggregation
+
+Aggregate scores across traces:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get all traces
+traces = client.search_traces(
+    project_name="my-project",
+    limit=1000
+)
+
+# Calculate average scores
+scores = []
+for trace in traces:
+    if trace.feedback_scores:
+        quality_scores = [
+            score["value"]
+            for score in trace.feedback_scores
+            if score["name"] == "quality"
+        ]
+        scores.extend(quality_scores)
+
+average_quality = sum(scores) / len(scores) if scores else 0
+print(f"Average quality score: {average_quality}")
+```
+
+## Best Practices
+
+<Card title="Use consistent naming" icon="tag">
+  Use standardized metric names across your application (e.g., always use "relevance" not "relevancy" or "relevant_score")
+</Card>
+
+<Card title="Normalize scores" icon="scale-balanced">
+  Keep scores in a consistent range (e.g., 0.0 to 1.0) for easier comparison and aggregation
+</Card>
+
+<Card title="Add reasons" icon="message">
+  Include explanations in the `reason` field for scores that fail thresholds or are particularly high/low
+</Card>
+
+<Card title="Score at appropriate levels" icon="layer-group">
+  Add span-level scores for individual steps and trace-level scores for overall quality
+</Card>
+
+<Card title="Combine automated and human scores" icon="users">
+  Use automated metrics for all traces and human annotations for a sample to validate the automated scores
+</Card>
+
+<Card title="Track score distribution" icon="chart-line">
+  Monitor score distributions over time to detect quality regressions or improvements
+</Card>
+
+## Complete Example
+
+```python
+import opik
+from opik import track, opik_context
+from opik.evaluation.metrics import Hallucination, AnswerRelevance
+
+# Initialize metrics
+hallucination_metric = Hallucination()
+relevance_metric = AnswerRelevance()
+
+client = opik.Opik(project_name="rag-system")
+
+@track(type="tool")
+def retrieve_documents(query):
+    documents = ["doc1", "doc2", "doc3"]
+    
+    # Score retrieval quality
+    retrieval_score = calculate_retrieval_quality(documents, query)
+    opik_context.update_current_span(
+        feedback_scores=[{
+            "name": "retrieval_quality",
+            "value": retrieval_score
+        }]
+    )
+    
+    return documents
+
+@track(type="llm")
+def generate_answer(query, context):
+    answer = f"Based on {context}, the answer is..."
+    
+    # Score generation
+    fluency = calculate_fluency(answer)
+    opik_context.update_current_span(
+        feedback_scores=[{
+            "name": "fluency",
+            "value": fluency
+        }]
+    )
+    
+    return answer
+
+@track(tags=["production"])
+def rag_with_scoring(query):
+    # Get trace ID for later human annotation
+    trace_data = opik_context.get_current_trace_data()
+    trace_id = trace_data.id if trace_data else None
+    
+    # Execute pipeline
+    context = retrieve_documents(query)
+    answer = generate_answer(query, context)
+    
+    # Calculate automated scores
+    hallucination_score = hallucination_metric.score(
+        input=query,
+        output=answer,
+        context=context
+    )
+    
+    relevance_score = relevance_metric.score(
+        input=query,
+        output=answer
+    )
+    
+    # Add trace-level scores
+    opik_context.update_current_trace(
+        feedback_scores=[
+            {
+                "name": "hallucination",
+                "value": hallucination_score.value,
+                "reason": hallucination_score.reason
+            },
+            {
+                "name": "answer_relevance",
+                "value": relevance_score.value,
+                "reason": relevance_score.reason
+            }
+        ],
+        metadata={
+            "needs_review": hallucination_score.value < 0.7
+        }
+    )
+    
+    # Flag low-quality responses for human review
+    if hallucination_score.value < 0.7:
+        queue = client.get_annotation_queue("needs-review")
+        queue.add_traces([{"trace_id": trace_id}])
+    
+    return answer
+
+# Use the pipeline
+result = rag_with_scoring("What is Opik?")
+print(result)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="chart-bar" href="/evaluation/overview">
+    Learn about Opik's evaluation framework
+  </Card>
+  
+  <Card title="Track Decorator" icon="at" href="/tracing/track-decorator">
+    Master the @track decorator
+  </Card>
+  
+  <Card title="Attachments" icon="paperclip" href="/tracing/attachments">
+    Attach files to traces and spans
+  </Card>
+  
+  <Card title="Overview" icon="book" href="/tracing/overview">
+    Back to tracing overview
+  </Card>
+</CardGroup>

@@ -1,0 +1,292 @@
+---
+title: Smolagents
+description: Integrate Opik with Smolagents via OpenTelemetry to track agent executions, tool calls, and LLM interactions.
+---
+
+[Smolagents](https://huggingface.co/docs/smolagents/en/index) is a framework from HuggingFace that allows you to create AI agents with various capabilities. The framework provides a simple way to build agents that can perform tasks like coding, searching the web, and more with built-in support for multiple tools and LLM providers.
+
+## Overview
+
+Opik integrates with Smolagents through OpenTelemetry instrumentation, providing:
+
+- **Automatic tracing** of agent executions and tool calls
+- **Multi-provider support** for various LLM backends
+- **Code agent tracking** for agents that generate and execute code
+- **Web search integration** monitoring
+- **Comprehensive observability** for debugging and optimization
+
+## Installation
+
+```bash
+pip install --upgrade opik 'smolagents[telemetry,toolkit]' opentelemetry-sdk opentelemetry-exporter-otlp
+```
+
+## Configuration
+
+<Steps>
+  <Step title="Configure OpenTelemetry Endpoint">
+    Set the OTEL endpoint based on your deployment:
+    
+    <Tabs>
+      <Tab title="Opik Cloud">
+        ```bash
+        export OTEL_EXPORTER_OTLP_ENDPOINT=https://www.comet.com/opik/api/v1/private/otel
+        export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<your-api-key>,Comet-Workspace=default'
+        ```
+        
+        <Note>
+          Add `projectName=<your-project-name>` to the headers to log to a specific project.
+        </Note>
+      </Tab>
+      
+      <Tab title="Self-hosted">
+        ```bash
+        export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api/v1/private/otel
+        ```
+      </Tab>
+      
+      <Tab title="Enterprise">
+        ```bash
+        export OTEL_EXPORTER_OTLP_ENDPOINT=https://<comet-deployment-url>/opik/api/v1/private/otel
+        export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<your-api-key>,Comet-Workspace=default'
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Configure LLM Provider">
+    Set your LLM provider API key (example with OpenAI):
+    
+    ```bash
+    export OPENAI_API_KEY="your-api-key"
+    ```
+    
+    Or programmatically:
+    
+    ```python
+    import os
+    import getpass
+    
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter your OpenAI API key: ")
+    ```
+  </Step>
+</Steps>
+
+## Usage
+
+### Basic Agent Tracking
+
+Set up OpenTelemetry instrumentation for Smolagents:
+
+```python
+# Import telemetry components
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+# Import SmolAgents instrumentation
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+
+# Set up the tracer provider with span processor
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(
+    SimpleSpanProcessor(OTLPSpanExporter())
+)
+
+# Instrument SmolAgents
+SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
+
+# Now use SmolAgents as usual
+from smolagents import CodeAgent, WebSearchTool, OpenAIServerModel
+
+model = OpenAIServerModel(model_id="gpt-4o")
+agent = CodeAgent(
+    tools=[WebSearchTool()],
+    model=model,
+    stream_outputs=True
+)
+
+result = agent.run(
+    "How many seconds would it take for a leopard at full speed to run through Pont des Arts?"
+)
+```
+
+### Code Agents
+
+Track agents that generate and execute code:
+
+```python
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+from smolagents import CodeAgent, OpenAIServerModel
+
+# Setup instrumentation
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
+
+model = OpenAIServerModel(model_id="gpt-4o")
+agent = CodeAgent(
+    model=model,
+    additional_authorized_imports=["numpy", "pandas"],
+)
+
+result = agent.run("Calculate the mean of [1, 2, 3, 4, 5]")
+print(result)
+```
+
+### Agents with Multiple Tools
+
+Track agents using multiple tools:
+
+```python
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+from smolagents import (
+    CodeAgent,
+    OpenAIServerModel,
+    WebSearchTool,
+    tool,
+)
+
+# Setup instrumentation
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
+
+@tool
+def calculate_square(number: float) -> float:
+    """Calculate the square of a number."""
+    return number ** 2
+
+@tool
+def get_weather(city: str) -> str:
+    """Get weather information for a city."""
+    # Simulated weather data
+    weather_map = {
+        "paris": "Sunny, 22°C",
+        "london": "Cloudy, 18°C",
+        "new york": "Rainy, 15°C",
+    }
+    return weather_map.get(city.lower(), "Weather data not available")
+
+model = OpenAIServerModel(model_id="gpt-4o")
+agent = CodeAgent(
+    tools=[WebSearchTool(), calculate_square, get_weather],
+    model=model,
+)
+
+result = agent.run("What's the weather in Paris and what's 12 squared?")
+print(result)
+```
+
+### ToolCallingAgent
+
+Track tool-calling agents:
+
+```python
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from openinference.instrumentation.smolagents import SmolagentsInstrumentor
+from smolagents import ToolCallingAgent, OpenAIServerModel, tool
+
+# Setup instrumentation
+trace_provider = TracerProvider()
+trace_provider.add_span_processor(SimpleSpanProcessor(OTLPSpanExporter()))
+SmolagentsInstrumentor().instrument(tracer_provider=trace_provider)
+
+@tool
+def convert_temperature(celsius: float) -> float:
+    """Convert Celsius to Fahrenheit."""
+    return (celsius * 9/5) + 32
+
+model = OpenAIServerModel(model_id="gpt-4o")
+agent = ToolCallingAgent(
+    tools=[convert_temperature],
+    model=model,
+)
+
+result = agent.run("Convert 25 degrees Celsius to Fahrenheit")
+print(result)
+```
+
+## Advanced Configuration
+
+### Custom Project Names
+
+Log traces to a specific project:
+
+```bash
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<api-key>,Comet-Workspace=default,projectName=smolagents-project'
+```
+
+### Custom Workspaces
+
+Log to a different workspace:
+
+```bash
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<api-key>,Comet-Workspace=my-workspace'
+```
+
+### Streaming Outputs
+
+Enable streaming for real-time agent responses:
+
+```python
+from smolagents import CodeAgent, OpenAIServerModel
+
+model = OpenAIServerModel(model_id="gpt-4o")
+agent = CodeAgent(
+    model=model,
+    stream_outputs=True  # Enable streaming
+)
+
+result = agent.run("Write a Python function to calculate fibonacci numbers")
+```
+
+## Viewing Traces
+
+All Smolagents executions are logged to Opik with:
+
+- **Agent runs** with inputs and outputs
+- **Tool executions** including web searches and custom tools
+- **Code generation** and execution steps
+- **Model calls** with token usage
+- **Error tracking** with detailed stack traces
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Code Agents" icon="code">
+    Track agents that generate and execute Python code
+  </Card>
+  <Card title="Web Search" icon="magnifying-glass">
+    Monitor web search tool usage and results
+  </Card>
+  <Card title="Multi-Provider" icon="plug">
+    Support for OpenAI, Anthropic, and other LLM providers
+  </Card>
+  <Card title="Custom Tools" icon="wrench">
+    Track custom tool creation and execution
+  </Card>
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Smolagents Documentation" href="https://huggingface.co/docs/smolagents/" icon="book">
+    Official Smolagents framework documentation
+  </Card>
+  <Card title="OpenTelemetry with Opik" href="/integrations/opentelemetry" icon="globe">
+    OpenTelemetry integration guide
+  </Card>
+  <Card title="HuggingFace Hub" href="https://huggingface.co/" icon="face-smile">
+    Explore models and tools on HuggingFace
+  </Card>
+</CardGroup>

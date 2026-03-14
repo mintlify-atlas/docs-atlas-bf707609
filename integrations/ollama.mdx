@@ -1,0 +1,587 @@
+---
+title: Ollama Integration
+description: Track and monitor local Ollama model calls with Opik
+---
+
+Opik allows you to track calls to locally-hosted Ollama models using manual instrumentation. While Ollama doesn't have a native integration, you can use Opik's `@track` decorator and context management to capture comprehensive traces.
+
+## Installation
+
+First, ensure you have both Opik and Ollama installed:
+
+```bash
+pip install opik ollama
+```
+
+Make sure you have Ollama running locally:
+
+```bash
+# Install and start Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama serve
+
+# Pull a model
+ollama pull llama3.1
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure Opik">
+    Initialize Opik in your application:
+
+    ```python
+    import opik
+
+    opik.configure()
+    ```
+  </Step>
+
+  <Step title="Wrap your Ollama calls">
+    Use the `@track` decorator and `opik_context` to track calls:
+
+    ```python
+    import ollama
+    from opik import track, opik_context
+
+    @track(tags=["ollama"])
+    def ollama_chat(user_message: str):
+        response = ollama.chat(
+            model="llama3.1",
+            messages=[{"role": "user", "content": user_message}]
+        )
+        
+        # Update span with usage information
+        opik_context.update_current_span(
+            metadata={
+                "model": response["model"],
+                "eval_duration": response["eval_duration"],
+                "load_duration": response["load_duration"],
+            },
+            usage={
+                "completion_tokens": response["eval_count"],
+                "prompt_tokens": response["prompt_eval_count"],
+                "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+            }
+        )
+        
+        return response["message"]["content"]
+    ```
+  </Step>
+
+  <Step title="Use as normal">
+    Call your function and Opik will track it:
+
+    ```python
+    result = ollama_chat("What is machine learning?")
+    print(result)
+    ```
+  </Step>
+</Steps>
+
+## Usage Examples
+
+### Basic Chat with Tracking
+
+```python
+import ollama
+from opik import configure, opik_context, track, flush_tracker
+
+configure()
+
+@track(tags=["ollama"])
+def ollama_llm_call(user_message: str):
+    # Create the Ollama model
+    response = ollama.chat(
+        model="llama3.1",
+        messages=[
+            {
+                "role": "user",
+                "content": user_message,
+            },
+        ],
+    )
+
+    opik_context.update_current_span(
+        metadata={
+            "model": response["model"],
+            "eval_duration": response["eval_duration"],
+            "load_duration": response["load_duration"],
+            "prompt_eval_duration": response["prompt_eval_duration"],
+            "prompt_eval_count": response["prompt_eval_count"],
+            "done": response["done"],
+            "done_reason": response["done_reason"],
+        },
+        usage={
+            "completion_tokens": response["eval_count"],
+            "prompt_tokens": response["prompt_eval_count"],
+            "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+        },
+    )
+    return response["message"]
+
+
+result = ollama_llm_call("Say this is a test")
+print(result["content"])
+flush_tracker()
+```
+
+### Streaming Responses
+
+Track streaming responses from Ollama:
+
+```python
+import ollama
+from opik import configure, opik_context, track, flush_tracker
+
+configure()
+
+@track(tags=["ollama", "streaming"])
+def ollama_stream(prompt: str):
+    stream = ollama.chat(
+        model="llama3.1",
+        messages=[{"role": "user", "content": prompt}],
+        stream=True
+    )
+    
+    full_response = ""
+    total_eval_count = 0
+    
+    for chunk in stream:
+        if chunk["message"]["content"]:
+            content = chunk["message"]["content"]
+            print(content, end="", flush=True)
+            full_response += content
+        
+        # Track metrics from the final chunk
+        if chunk.get("done"):
+            total_eval_count = chunk.get("eval_count", 0)
+            prompt_eval_count = chunk.get("prompt_eval_count", 0)
+            
+            opik_context.update_current_span(
+                metadata={
+                    "model": chunk["model"],
+                    "eval_duration": chunk.get("eval_duration"),
+                    "load_duration": chunk.get("load_duration"),
+                    "done_reason": chunk.get("done_reason"),
+                },
+                usage={
+                    "completion_tokens": total_eval_count,
+                    "prompt_tokens": prompt_eval_count,
+                    "total_tokens": total_eval_count + prompt_eval_count,
+                }
+            )
+    
+    print()
+    return full_response
+
+result = ollama_stream("Write a haiku about programming")
+flush_tracker()
+```
+
+### Multi-turn Conversations
+
+```python
+import ollama
+from opik import configure, opik_context, track, flush_tracker
+
+configure()
+
+@track(tags=["ollama", "conversation"])
+def ollama_conversation():
+    messages = []
+    conversation = [
+        "What is Python?",
+        "What are its main features?",
+        "How does it compare to Java?"
+    ]
+    
+    for user_input in conversation:
+        messages.append({"role": "user", "content": user_input})
+        
+        response = ollama.chat(
+            model="llama3.1",
+            messages=messages
+        )
+        
+        assistant_message = response["message"]["content"]
+        messages.append({"role": "assistant", "content": assistant_message})
+        
+        print(f"User: {user_input}")
+        print(f"Assistant: {assistant_message}\n")
+    
+    # Track final metrics
+    opik_context.update_current_span(
+        metadata={
+            "model": response["model"],
+            "turns": len(conversation),
+            "total_duration": response["total_duration"],
+        },
+        usage={
+            "completion_tokens": response["eval_count"],
+            "prompt_tokens": response["prompt_eval_count"],
+            "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+        }
+    )
+    
+    return messages
+
+conversation = ollama_conversation()
+flush_tracker()
+```
+
+### Using Different Models
+
+```python
+import ollama
+from opik import track, opik_context, flush_tracker
+
+@track(tags=["ollama"])
+def ask_model(model_name: str, question: str):
+    response = ollama.chat(
+        model=model_name,
+        messages=[{"role": "user", "content": question}]
+    )
+    
+    opik_context.update_current_span(
+        metadata={"model": model_name},
+        usage={
+            "completion_tokens": response["eval_count"],
+            "prompt_tokens": response["prompt_eval_count"],
+            "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+        }
+    )
+    
+    return response["message"]["content"]
+
+# Try different models
+question = "What is the capital of France?"
+
+for model in ["llama3.1", "mistral", "codellama"]:
+    print(f"\n{model}:")
+    answer = ask_model(model, question)
+    print(answer)
+
+flush_tracker()
+```
+
+### Embedding Generation
+
+Track Ollama embeddings:
+
+```python
+import ollama
+from opik import track, opik_context, flush_tracker
+
+@track(tags=["ollama", "embeddings"])
+def generate_embedding(text: str):
+    response = ollama.embeddings(
+        model="llama3.1",
+        prompt=text
+    )
+    
+    opik_context.update_current_span(
+        metadata={
+            "model": response["model"],
+            "embedding_dim": len(response["embedding"]),
+        }
+    )
+    
+    return response["embedding"]
+
+embedding = generate_embedding("Hello, world!")
+print(f"Generated embedding with {len(embedding)} dimensions")
+flush_tracker()
+```
+
+## What Gets Tracked
+
+When using manual tracking with Ollama, you can capture:
+
+<CardGroup cols={2}>
+  <Card title="Input" icon="arrow-right-to-bracket">
+    - User messages
+    - System prompts
+    - Model parameters
+    - Conversation history
+  </Card>
+
+  <Card title="Output" icon="arrow-left-from-bracket">
+    - Model responses
+    - Generated content
+    - Completion status
+    - Done reason
+  </Card>
+
+  <Card title="Metadata" icon="tags">
+    - Model name
+    - Evaluation duration
+    - Load duration
+    - Prompt evaluation duration
+    - Done status and reason
+  </Card>
+
+  <Card title="Usage" icon="chart-line">
+    - Completion tokens (eval_count)
+    - Prompt tokens (prompt_eval_count)
+    - Total tokens
+    - Custom metrics
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Nested Tracking
+
+Combine multiple Ollama calls in a tracked workflow:
+
+```python
+import ollama
+from opik import track, opik_context, flush_tracker
+
+@track(tags=["ollama"])
+def generate_with_ollama(prompt: str, model: str):
+    response = ollama.chat(
+        model=model,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    opik_context.update_current_span(
+        metadata={"model": model},
+        usage={
+            "completion_tokens": response["eval_count"],
+            "prompt_tokens": response["prompt_eval_count"],
+            "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+        }
+    )
+    
+    return response["message"]["content"]
+
+@track(tags=["workflow"])
+def multi_step_generation(topic: str):
+    # Generate outline
+    outline = generate_with_ollama(
+        f"Create a brief outline for an article about {topic}",
+        "llama3.1"
+    )
+    
+    # Generate introduction
+    intro = generate_with_ollama(
+        f"Write an introduction for: {outline}",
+        "llama3.1"
+    )
+    
+    return {"outline": outline, "introduction": intro}
+
+result = multi_step_generation("Artificial Intelligence")
+print(result)
+flush_tracker()
+```
+
+### Custom Metrics
+
+Track custom performance metrics:
+
+```python
+import time
+import ollama
+from opik import track, opik_context, flush_tracker
+
+@track(tags=["ollama", "performance"])
+def timed_ollama_call(prompt: str):
+    start_time = time.time()
+    
+    response = ollama.chat(
+        model="llama3.1",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    end_time = time.time()
+    wall_time = end_time - start_time
+    
+    opik_context.update_current_span(
+        metadata={
+            "model": response["model"],
+            "wall_time_seconds": wall_time,
+            "eval_duration_ms": response["eval_duration"] / 1_000_000,
+            "tokens_per_second": response["eval_count"] / (response["eval_duration"] / 1_000_000_000),
+        },
+        usage={
+            "completion_tokens": response["eval_count"],
+            "prompt_tokens": response["prompt_eval_count"],
+            "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+        }
+    )
+    
+    return response["message"]["content"]
+
+result = timed_ollama_call("Explain quantum computing in simple terms")
+flush_tracker()
+```
+
+## Configuration Options
+
+### Project Name
+
+Specify a custom project name in the `configure()` call or track decorator:
+
+```python
+import opik
+
+opik.configure()
+
+@opik.track(project_name="ollama-experiments", tags=["ollama"])
+def ollama_call(prompt: str):
+    # Your code here
+    pass
+```
+
+### Custom Tags
+
+Use tags to organize your traces:
+
+```python
+@track(tags=["ollama", "production", "llama3.1"])
+def production_call(prompt: str):
+    # Your code here
+    pass
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Always update span context">
+    Use `opik_context.update_current_span()` to capture usage and metadata:
+
+    ```python
+    opik_context.update_current_span(
+        metadata={"model": response["model"]},
+        usage={
+            "completion_tokens": response["eval_count"],
+            "prompt_tokens": response["prompt_eval_count"],
+        }
+    )
+    ```
+  </Step>
+
+  <Step title="Always flush at the end">
+    Call `opik.flush_tracker()` to ensure all traces are sent:
+
+    ```python
+    from opik import flush_tracker
+
+    # Your code here...
+    
+    flush_tracker()
+    ```
+  </Step>
+
+  <Step title="Use meaningful tags">
+    Tag your traces for easy filtering:
+
+    ```python
+    @track(tags=["ollama", "llama3.1", "chat"])
+    def my_function():
+        pass
+    ```
+  </Step>
+
+  <Step title="Handle streaming properly">
+    Extract metrics from the final chunk when streaming:
+
+    ```python
+    for chunk in stream:
+        if chunk.get("done"):
+            # Update metrics from final chunk
+            opik_context.update_current_span(...)
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Traces not appearing
+
+Make sure to:
+1. Call `opik.configure()` before tracking
+2. Use the `@track` decorator on your functions
+3. Call `opik.flush_tracker()` at the end of your script
+4. Check that Ollama is running (`ollama serve`)
+
+### Missing usage information
+
+Ensure you're calling `opik_context.update_current_span()` with usage data:
+
+```python
+opik_context.update_current_span(
+    usage={
+        "completion_tokens": response["eval_count"],
+        "prompt_tokens": response["prompt_eval_count"],
+        "total_tokens": response["eval_count"] + response["prompt_eval_count"],
+    }
+)
+```
+
+### Ollama connection errors
+
+Verify Ollama is running:
+
+```bash
+# Start Ollama
+ollama serve
+
+# Verify it's working
+ollama list
+```
+
+## Limitations
+
+<Note>
+Unlike native integrations, Ollama tracking requires manual instrumentation:
+
+- You must use the `@track` decorator
+- You must manually update span context with usage and metadata
+- Streaming requires extracting metrics from the final chunk
+
+Consider using OpenAI-compatible APIs for automatic tracking if you need more convenience.
+</Note>
+
+## Reference
+
+### Key Functions
+
+```python
+# Track a function
+@opik.track(project_name="...", tags=[...])
+def my_function():
+    pass
+
+# Update current span
+opik.opik_context.update_current_span(
+    metadata={...},
+    usage={...}
+)
+
+# Flush traces
+opik.flush_tracker()
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Manual Tracking" href="/tracing/log-traces" icon="code">
+    Learn more about manual tracking with Opik
+  </Card>
+
+  <Card title="Evaluation" href="/evaluation/overview" icon="chart-bar">
+    Evaluate your Ollama model outputs
+  </Card>
+
+  <Card title="Datasets" href="/evaluation/datasets" icon="database">
+    Create datasets for testing
+  </Card>
+
+  <Card title="Other Integrations" href="/integrations" icon="plug">
+    Explore automatic integrations
+  </Card>
+</CardGroup>

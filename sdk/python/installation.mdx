@@ -1,0 +1,280 @@
+---
+title: "Installation"
+description: "Install and set up the Opik Python SDK"
+---
+
+This guide covers installing the Opik Python SDK and verifying your installation.
+
+## Requirements
+
+<ParamField path="python" type="version" required>
+  Python 3.10 or higher is required
+</ParamField>
+
+The Opik Python SDK supports:
+- Python 3.10
+- Python 3.11
+- Python 3.12
+- Python 3.13
+- Python 3.14
+
+## Installation Methods
+
+### Using pip
+
+Install Opik using pip:
+
+```bash
+pip install opik
+```
+
+### Using uv (Faster)
+
+For faster installation, use [uv](https://github.com/astral-sh/uv):
+
+```bash
+uv pip install opik
+```
+
+### Install from Source
+
+To install the latest development version from GitHub:
+
+```bash
+pip install git+https://github.com/comet-ml/opik.git#subdirectory=sdks/python
+```
+
+## Verify Installation
+
+Verify that Opik is installed correctly:
+
+```python
+import opik
+
+print(opik.__version__)
+```
+
+You should see the version number printed, for example: `0.2.30`
+
+## Dependencies
+
+The Opik SDK automatically installs the following core dependencies:
+
+- `httpx` - HTTP client for API communication
+- `click` - Command-line interface framework
+- `boto3-stubs[bedrock-runtime]` - AWS Bedrock type stubs
+- `rapidfuzz` - String matching utilities
+- LiteLLM and related packages for LLM integrations
+
+### Optional Dependencies
+
+Some features require additional dependencies:
+
+#### Pandas Support
+
+For exporting datasets to pandas DataFrames:
+
+```bash
+pip install pandas
+```
+
+#### Integration-Specific Dependencies
+
+Different integrations may require their own packages:
+
+<CodeGroup>
+```bash OpenAI
+pip install openai
+```
+
+```bash LangChain
+pip install langchain langchain-openai
+```
+
+```bash AWS Bedrock
+pip install boto3
+```
+</CodeGroup>
+
+## Command-Line Interface
+
+After installation, the `opik` command-line tool is available:
+
+```bash
+opik --help
+```
+
+### Available Commands
+
+<CodeGroup>
+```bash Configure
+# Interactive configuration wizard
+opik configure
+```
+
+```bash Local Setup
+# Configure for local Opik instance
+opik configure --use_local
+```
+
+```bash Cloud Setup
+# Configure for Comet.com cloud
+opik configure
+```
+</CodeGroup>
+
+## Next Steps
+
+After installation, you'll need to configure the SDK:
+
+<Steps>
+  <Step title="Configure the SDK">
+    Run the configuration wizard to set up your API key and workspace
+    ```bash
+    opik configure
+    ```
+  </Step>
+  
+  <Step title="Verify Configuration">
+    Test your configuration by creating a simple traced function
+    ```python
+    import opik
+    
+    @opik.track
+    def hello():
+        return "Hello, Opik!"
+    
+    hello()
+    opik.flush_tracker()
+    ```
+  </Step>
+  
+  <Step title="Explore Features">
+    Check out the [Configuration guide](/sdk/python/configuration) to learn about advanced setup options
+  </Step>
+</Steps>
+
+## Upgrading
+
+To upgrade to the latest version of Opik:
+
+<CodeGroup>
+```bash pip
+pip install --upgrade opik
+```
+
+```bash uv
+uv pip install --upgrade opik
+```
+</CodeGroup>
+
+## Uninstalling
+
+To remove Opik from your environment:
+
+```bash
+pip uninstall opik
+```
+
+## Troubleshooting
+
+### Import Errors
+
+If you encounter import errors, ensure you're using Python 3.10 or higher:
+
+```bash
+python --version
+```
+
+### Dependency Conflicts
+
+If you experience dependency conflicts, try installing in a fresh virtual environment:
+
+```bash
+python -m venv opik-env
+source opik-env/bin/activate  # On Windows: opik-env\Scripts\activate
+pip install opik
+```
+
+### Connection Issues
+
+If you're having trouble connecting to Opik:
+
+1. Verify your configuration with `opik configure`
+2. Check your network connectivity
+3. For self-hosted instances, ensure the server is accessible
+
+## Environment Setup
+
+### Virtual Environments
+
+We recommend using virtual environments:
+
+<CodeGroup>
+```bash venv
+python -m venv myenv
+source myenv/bin/activate  # On Windows: myenv\Scripts\activate
+pip install opik
+```
+
+```bash conda
+conda create -n opik-env python=3.11
+conda activate opik-env
+pip install opik
+```
+</CodeGroup>
+
+### Development Installation
+
+For contributing to Opik or running examples:
+
+```bash
+# Clone the repository
+git clone https://github.com/comet-ml/opik.git
+cd opik/sdks/python
+
+# Install in editable mode with test dependencies
+pip install -e .
+pip install -r tests/test_requirements.txt
+```
+
+## Platform-Specific Notes
+
+### macOS
+
+No special requirements. Install using pip or uv as shown above.
+
+### Linux
+
+No special requirements. Install using pip or uv as shown above.
+
+### Windows
+
+Opik works on Windows with Python 3.10+. Use PowerShell or Command Prompt for installation.
+
+## Docker
+
+To use Opik in a Docker container:
+
+```dockerfile
+FROM python:3.11-slim
+
+RUN pip install opik
+
+# Your application code
+COPY . /app
+WORKDIR /app
+
+CMD ["python", "your_app.py"]
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configuration" icon="gear" href="/sdk/python/configuration">
+    Configure Opik for your environment
+  </Card>
+  <Card title="Quick Start" icon="rocket" href="/sdk/python/overview">
+    Start tracing your first function
+  </Card>
+</CardGroup>

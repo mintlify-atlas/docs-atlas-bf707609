@@ -1,0 +1,150 @@
+---
+title: TypeScript SDK Overview
+description: Build and evaluate LLM applications with the Opik TypeScript SDK
+---
+
+The Opik TypeScript SDK provides a comprehensive toolkit for building, tracing, and evaluating LLM applications in TypeScript and JavaScript. Whether you're working with Node.js, Edge runtimes, or modern frameworks, the SDK offers first-class support for monitoring and improving your AI systems.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Automatic Tracing" icon="route">
+    Use the `@track` decorator to automatically capture traces and spans from your functions
+  </Card>
+  <Card title="Manual Instrumentation" icon="code">
+    Fine-grained control with the Opik client for custom tracing workflows
+  </Card>
+  <Card title="LLM Evaluation" icon="chart-line">
+    Built-in metrics and evaluation framework for measuring model performance
+  </Card>
+  <Card title="Dataset Management" icon="database">
+    Create, version, and manage datasets for testing and evaluation
+  </Card>
+  <Card title="Prompt Management" icon="file-lines">
+    Version control for prompts with automatic change detection
+  </Card>
+  <Card title="Framework Integrations" icon="puzzle-piece">
+    Seamless integrations with OpenAI, Vercel AI, LangChain, and Google Gemini
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+npm install opik
+```
+
+The SDK requires Node.js version 18 or higher and includes TypeScript type definitions.
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure your API key">
+    Set up your Opik credentials using environment variables:
+
+    ```bash
+    export OPIK_API_KEY="your-api-key"
+    export OPIK_URL_OVERRIDE="https://www.comet.com/opik/api"
+    export OPIK_PROJECT_NAME="your-project-name"
+    export OPIK_WORKSPACE="your-workspace-name"
+    ```
+
+    Or pass configuration directly to the client:
+
+    ```typescript
+    import { Opik } from "opik";
+
+    const client = new Opik({
+      apiKey: "your-api-key",
+      apiUrl: "https://www.comet.com/opik/api",
+      projectName: "your-project-name",
+      workspaceName: "your-workspace-name",
+    });
+    ```
+  </Step>
+
+  <Step title="Create your first trace">
+    Use the `@track` decorator for automatic instrumentation:
+
+    ```typescript
+    import { track, flushAll } from "opik";
+
+    class MyLLMApp {
+      @track({ type: "llm" })
+      async generateResponse(prompt: string) {
+        // Your LLM call here
+        return "AI response";
+      }
+
+      @track({ name: "process-request" })
+      async processRequest(input: string) {
+        const response = await this.generateResponse(input);
+        return response;
+      }
+    }
+
+    const app = new MyLLMApp();
+    await app.processRequest("Hello, world!");
+    await flushAll();
+    ```
+  </Step>
+
+  <Step title="View your traces">
+    Check the Opik dashboard to see your traces, spans, and performance metrics.
+  </Step>
+</Steps>
+
+## Architecture
+
+The TypeScript SDK is organized into several key modules:
+
+### Core Components
+
+- **OpikClient** (`Opik`): The main client for interacting with the Opik API
+- **Trace**: Represents a complete execution flow (e.g., a user request)
+- **Span**: Represents individual operations within a trace (e.g., LLM calls, tool invocations)
+- **track decorator**: Automatic instrumentation for functions and methods
+
+### Data Management
+
+- **Dataset**: Create and manage test datasets
+- **Experiment**: Run evaluations and track results
+- **Prompt**: Version control for prompt templates
+
+### Evaluation
+
+- **evaluate()**: Run experiments against datasets with custom tasks
+- **evaluatePrompt()**: Evaluate prompt performance with AI SDK integration
+- **Metrics**: Built-in heuristic and LLM-judge metrics
+
+## Framework Integrations
+
+The Opik SDK provides dedicated integration packages for popular AI frameworks:
+
+- **[opik-vercel](https://www.npmjs.com/package/opik-vercel)**: Vercel AI SDK integration
+- **[opik-openai](https://www.npmjs.com/package/opik-openai)**: OpenAI SDK integration
+- **[opik-langchain](https://www.npmjs.com/package/opik-langchain)**: LangChain integration
+- **[opik-gemini](https://www.npmjs.com/package/opik-gemini)**: Google Gemini integration
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/sdk/typescript/installation">
+    Get started with installation and configuration
+  </Card>
+  <Card title="Tracing" icon="route" href="/sdk/typescript/tracing">
+    Learn how to trace your LLM applications
+  </Card>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/typescript/evaluation">
+    Evaluate and improve your models
+  </Card>
+  <Card title="Client API" icon="code" href="/sdk/typescript/client">
+    Explore the full client API reference
+  </Card>
+</CardGroup>
+
+## Community and Support
+
+- **[GitHub Repository](https://github.com/comet-ml/opik)**: Browse the source code and report issues
+- **[npm Package](https://www.npmjs.com/package/opik)**: View package details and version history
+- **[Documentation](https://www.comet.com/docs/opik/)**: Complete Opik documentation

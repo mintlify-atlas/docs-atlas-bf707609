@@ -1,0 +1,285 @@
+---
+title: "Installation"
+description: "Install and configure the Opik Optimizer SDK"
+---
+
+# Installation
+
+The Opik Optimizer SDK is a Python package that works with Python 3.10 through 3.14.
+
+## Requirements
+
+- **Python:** `>=3.10,<3.15`
+- **Opik API key:** Recommended for full functionality (configure via `opik configure`)
+- **LLM Provider API key:** Required for your chosen LLM provider (OpenAI, Anthropic, etc.)
+
+## Basic Installation
+
+<Tabs>
+  <Tab title="pip">
+    ```bash
+    pip install opik-optimizer
+    ```
+  </Tab>
+  <Tab title="uv (faster)">
+    ```bash
+    uv pip install opik-optimizer
+    ```
+  </Tab>
+</Tabs>
+
+## Optional Dependencies
+
+<Tabs>
+  <Tab title="Benchmarking">
+    ```bash
+    pip install opik-optimizer[benchmarks]
+    ```
+    
+    Includes: `modal`, `bm25s[full]`, `PyStemmer`, `huggingface-hub`, `ujson`, `pyarrow`
+  </Tab>
+  <Tab title="BM25 Search">
+    ```bash
+    pip install opik-optimizer[bm25]
+    ```
+    
+    Includes: `bm25s[full]`, `PyStemmer`, `huggingface-hub`, `ujson`, `pyarrow`
+  </Tab>
+  <Tab title="Development">
+    ```bash
+    pip install opik-optimizer[dev]
+    ```
+    
+    Includes: testing frameworks, pre-commit hooks, and additional utilities
+  </Tab>
+</Tabs>
+
+## Configuration
+
+### 1. Configure Opik (Optional)
+
+If you want to log optimization experiments to Comet or use Opik Datasets:
+
+<Steps>
+  <Step title="Install Opik CLI">
+    ```bash
+    pip install opik
+    ```
+  </Step>
+  <Step title="Run Configuration">
+    ```bash
+    opik configure
+    ```
+    
+    You'll be prompted to enter your Opik API key and workspace details.
+  </Step>
+  <Step title="Verify Configuration">
+    ```python
+    import opik
+    
+    client = opik.Opik()
+    print("Successfully connected to Opik!")
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Using Opik with Comet allows you to track optimization runs, compare results, and manage datasets seamlessly.
+</Note>
+
+### 2. Set Up LLM Provider API Keys
+
+The optimizer uses LiteLLM, which supports multiple providers. Configure your API keys as environment variables:
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```bash
+    export OPENAI_API_KEY="your_openai_api_key"
+    ```
+  </Tab>
+  <Tab title="Anthropic">
+    ```bash
+    export ANTHROPIC_API_KEY="your_anthropic_api_key"
+    ```
+  </Tab>
+  <Tab title="Google Gemini">
+    ```bash
+    export GEMINI_API_KEY="your_gemini_api_key"
+    ```
+  </Tab>
+  <Tab title="Azure OpenAI">
+    ```bash
+    export AZURE_API_KEY="your_azure_api_key"
+    export AZURE_API_BASE="your_azure_endpoint"
+    export AZURE_API_VERSION="2024-02-15-preview"
+    ```
+  </Tab>
+</Tabs>
+
+<Info>
+  The optimizer utilizes [LiteLLM](https://docs.litellm.ai/docs/), so you can configure keys for various providers as per LiteLLM's documentation.
+</Info>
+
+## Development Installation
+
+To contribute or use the Optimizer from source:
+
+<Steps>
+  <Step title="Clone Repository">
+    ```bash
+    git clone git@github.com:comet-ml/opik.git
+    cd opik/sdks/opik_optimizer
+    ```
+  </Step>
+  <Step title="Install in Editable Mode">
+    ```bash
+    pip install -e .[dev]
+    ```
+    
+    The `[dev]` extra installs development dependencies like `pytest`.
+  </Step>
+  <Step title="Set Up Pre-commit Hooks">
+    ```bash
+    pre-commit install
+    ```
+  </Step>
+</Steps>
+
+## Verify Installation
+
+Test your installation with this quick script:
+
+```python
+import opik_optimizer
+
+print(f"Opik Optimizer version: {opik_optimizer.__version__}")
+
+# List available optimizers
+from opik_optimizer import (
+    EvolutionaryOptimizer,
+    FewShotBayesianOptimizer,
+    MetaPromptOptimizer,
+    GepaOptimizer,
+    ParameterOptimizer,
+    HRPO
+)
+
+print("Available optimizers:")
+for optimizer in [EvolutionaryOptimizer, FewShotBayesianOptimizer, 
+                  MetaPromptOptimizer, GepaOptimizer, ParameterOptimizer, HRPO]:
+    print(f"  - {optimizer.__name__}")
+```
+
+## Quick Start Example
+
+Once installed, try this simple example:
+
+```python
+from opik.evaluation.metrics import LevenshteinRatio
+from opik_optimizer import FewShotBayesianOptimizer, ChatPrompt
+from opik_optimizer.datasets import hotpot
+
+# Load a sample dataset
+dataset = hotpot(count=100)
+
+# Define prompt
+prompt = ChatPrompt(
+    system="You are a helpful assistant.",
+    user="{question}"
+)
+
+# Create optimizer
+optimizer = FewShotBayesianOptimizer(
+    model="gpt-4o-mini",
+    min_examples=3,
+    max_examples=8,
+    n_threads=4,
+    seed=42
+)
+
+# Define metric
+def levenshtein_ratio(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"], 
+        output=llm_output
+    )
+
+# Run optimization
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=levenshtein_ratio,
+    n_samples=50
+)
+
+# Display results
+result.display()
+```
+
+## Interactive Notebooks
+
+Explore the Optimizer SDK with interactive notebooks:
+
+<Card 
+  title="Opik Optimizer Introduction" 
+  icon="book" 
+  href="https://colab.research.google.com/github/comet-ml/opik/blob/main/sdks/opik_optimizer/notebooks/OpikOptimizerIntro.ipynb"
+>
+  Open in Google Colab to try the optimizer without local installation
+</Card>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: No module named 'opik_optimizer'">
+    Make sure you've installed the package:
+    ```bash
+    pip install opik-optimizer
+    ```
+    
+    If you're using a virtual environment, ensure it's activated.
+  </Accordion>
+  
+  <Accordion title="LiteLLM API Key Errors">
+    Verify your API keys are set correctly:
+    ```python
+    import os
+    print(os.environ.get('OPENAI_API_KEY'))  # Should not be None
+    ```
+    
+    Make sure to restart your Python session after setting environment variables.
+  </Accordion>
+  
+  <Accordion title="Version Compatibility Issues">
+    The optimizer requires Python 3.10 or higher. Check your Python version:
+    ```bash
+    python --version
+    ```
+    
+    For specific version requirements, see the [README](https://github.com/comet-ml/opik/blob/main/sdks/opik_optimizer/README.md).
+  </Accordion>
+  
+  <Accordion title="DEAP Import Errors (EvolutionaryOptimizer)">
+    The EvolutionaryOptimizer requires DEAP. It should be installed automatically, but if you encounter issues:
+    ```bash
+    pip install deap>=1.4.3
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="compass" href="/sdk/optimizer/overview">
+    Learn about the Optimizer SDK features
+  </Card>
+  <Card title="Agents" icon="robot" href="/sdk/optimizer/agents">
+    Understand agent optimization
+  </Card>
+  <Card title="Algorithms" icon="chart-line" href="/sdk/optimizer/algorithms">
+    Explore optimization algorithms
+  </Card>
+  <Card title="Examples" icon="code" href="https://github.com/comet-ml/opik/tree/main/sdks/opik_optimizer/scripts/optimizer_algorithms">
+    View code examples on GitHub
+  </Card>
+</CardGroup>

@@ -1,0 +1,209 @@
+---
+title: Google Agent Development Kit (ADK)
+description: Integrate Opik with Google ADK to automatically track agent executions, tool calls, and LLM interactions with comprehensive cost tracking.
+---
+
+[Agent Development Kit (ADK)](https://google.github.io/adk-docs/) is a flexible and modular framework for developing and deploying AI agents. ADK provides tight integration with the Google ecosystem and Gemini models while supporting popular LLMs and open-source generative AI tools.
+
+## Overview
+
+Opik provides comprehensive integration with Google ADK, automatically logging traces for all agent executions, tool calls, and LLM interactions. The integration supports three key patterns:
+
+1. **Automatic Agent Tracking** - Recommended approach using `track_adk_agent_recursive`
+2. **Manual Callback Configuration** - Alternative approach with explicit callback setup
+3. **Hybrid Tracing** - Combining Opik decorators with ADK callbacks
+
+## Key Features
+
+- **One-line instrumentation** with `track_adk_agent_recursive` for automatic tracing
+- **Automatic cost tracking** for all supported LLM providers including LiteLLM models
+- **Full compatibility** with the `@opik.track` decorator
+- **Thread support** for conversational applications using ADK sessions
+- **Agent graph visualization** with Mermaid diagrams for multi-agent workflows
+- **Comprehensive error tracking** with detailed error information and stack traces
+
+## Installation
+
+```bash
+pip install opik google-adk
+```
+
+## Configuration
+
+<Steps>
+  <Step title="Configure Opik">
+    Set up your Opik workspace:
+    
+    ```bash
+    opik configure
+    ```
+    
+    Or configure programmatically:
+    
+    ```python
+    import opik
+    opik.configure()
+    ```
+  </Step>
+  
+  <Step title="Configure LLM Provider">
+    Set your LLM provider API key (example with OpenAI):
+    
+    ```bash
+    export OPENAI_API_KEY="your-api-key"
+    ```
+  </Step>
+</Steps>
+
+## Usage
+
+### Automatic Agent Tracking (Recommended)
+
+The recommended way to track ADK agents is using `track_adk_agent_recursive` and `OpikTracer`:
+
+```python
+import datetime
+from zoneinfo import ZoneInfo
+from google.adk.agents import LlmAgent
+from google.adk.models.lite_llm import LiteLlm
+from opik.integrations.adk import OpikTracer, track_adk_agent_recursive
+
+def get_weather(city: str) -> dict:
+    """Get weather information for a city."""
+    if city.lower() == "new york":
+        return {
+            "status": "success",
+            "report": "The weather in New York is sunny with a temperature of 25 °C (77 °F).",
+        }
+    return {"status": "error", "error_message": f"Weather info for '{city}' is unavailable."}
+
+# Initialize LiteLLM with OpenAI gpt-4o
+llm = LiteLlm(model="openai/gpt-4o")
+
+# Create the agent
+basic_agent = LlmAgent(
+    name="weather_agent",
+    model=llm,
+    description="Agent for answering weather questions",
+    instruction="Answer questions about the weather in a city.",
+    tools=[get_weather],
+)
+
+# Configure Opik tracer
+opik_tracer = OpikTracer(
+    name="weather-agent",
+    tags=["weather", "demo"],
+    metadata={"environment": "development"},
+    project_name="adk-demo"
+)
+
+# Instrument the agent with automatic tracking
+track_adk_agent_recursive(basic_agent, opik_tracer)
+
+# Run the agent - all calls are automatically tracked
+result = basic_agent.run(
+    input="What's the weather like in New York?"
+)
+```
+
+### Manual Callback Configuration
+
+For fine-grained control, you can manually configure callbacks:
+
+```python
+from google.adk.agents import LlmAgent
+from opik.integrations.adk import OpikTracer
+
+agent = LlmAgent(
+    name="assistant",
+    model=llm,
+    instruction="You are a helpful assistant.",
+)
+
+opik_tracer = OpikTracer(project_name="adk-manual")
+agent.config.callbacks = [opik_tracer]
+
+result = agent.run(input="Hello!")
+```
+
+### Hybrid Tracing with @opik.track
+
+Combine ADK tracking with Opik decorators for comprehensive observability:
+
+```python
+import opik
+from opik.integrations.adk import OpikTracer, track_adk_agent_recursive
+
+@opik.track
+def run_agent_workflow(user_input: str):
+    opik_tracer = OpikTracer()
+    track_adk_agent_recursive(agent, opik_tracer)
+    
+    result = agent.run(input=user_input)
+    return result.output
+
+output = run_agent_workflow("What's the weather?")
+```
+
+## Thread Support
+
+Track conversational threads by setting the `thread_id` attribute:
+
+```python
+from google.adk.agents import LlmAgent, Session
+from opik.integrations.adk import OpikTracer, track_adk_agent_recursive
+
+session = Session()
+opik_tracer = OpikTracer()
+track_adk_agent_recursive(agent, opik_tracer)
+
+# All runs in the same session are linked by thread_id
+result1 = agent.run(input="Hello", session=session)
+result2 = agent.run(input="What did I just say?", session=session)
+```
+
+## Agent Graph Visualization
+
+Generate Mermaid diagrams for multi-agent workflows:
+
+```python
+from opik.integrations.adk import build_mermaid_graph_definition
+
+# Generate graph definition
+graph_definition = build_mermaid_graph_definition(agent)
+print(graph_definition)
+```
+
+## Cost Tracking
+
+Opik automatically tracks token usage and costs for all supported LLM providers:
+
+- OpenAI
+- Anthropic
+- Google AI (Gemini)
+- AWS Bedrock
+- And more via LiteLLM
+
+Costs are displayed in the Opik dashboard for each trace and span.
+
+## API Reference
+
+<CardGroup cols={2}>
+  <Card title="OpikTracer" href="/sdk/python/overview">
+    Configure ADK tracing with project name, tags, and metadata
+  </Card>
+  <Card title="track_adk_agent_recursive" href="/sdk/python/overview">
+    Automatically instrument agent hierarchies
+  </Card>
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Google ADK Documentation" href="https://google.github.io/adk-docs/" icon="book">
+    Official ADK framework documentation
+  </Card>
+  <Card title="Example Notebooks" href="/introduction" icon="flask">
+    Explore ADK integration examples
+  </Card>
+</CardGroup>

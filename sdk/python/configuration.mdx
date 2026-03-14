@@ -1,0 +1,408 @@
+---
+title: "Configuration"
+description: "Configure the Opik Python SDK for cloud and self-hosted deployments"
+---
+
+This guide covers how to configure the Opik Python SDK for different deployment scenarios.
+
+## Configuration Methods
+
+Opik can be configured in three ways:
+
+1. **Interactive CLI** - Run `opik configure` for a guided setup
+2. **Programmatic** - Use `opik.configure()` in your code
+3. **Environment Variables** - Set configuration via environment variables
+
+## Interactive Configuration
+
+The easiest way to configure Opik is using the interactive CLI:
+
+<CodeGroup>
+```bash Cloud (Comet.com)
+opik configure
+```
+
+```bash Self-Hosted
+opik configure --use_local
+```
+</CodeGroup>
+
+The CLI will prompt you for:
+- API key (for cloud deployments)
+- Workspace name
+- Server URL (for self-hosted instances)
+
+## Programmatic Configuration
+
+Configure Opik directly in your Python code:
+
+### Cloud Configuration
+
+For Comet.com cloud deployments:
+
+```python
+import opik
+
+opik.configure(
+    api_key="YOUR_API_KEY",
+    workspace="YOUR_WORKSPACE",
+    project_name="my-project"  # Optional: default project for traces
+)
+```
+
+<ParamField path="api_key" type="string" required>
+  Your Opik API key from Comet.com
+</ParamField>
+
+<ParamField path="workspace" type="string" required>
+  Your workspace name (found in your Comet URL: `https://www.comet.com/YOUR_WORKSPACE/...`)
+</ParamField>
+
+<ParamField path="project_name" type="string">
+  Default project name for traces and spans
+</ParamField>
+
+### Self-Hosted Configuration
+
+For local or self-hosted Opik instances:
+
+```python
+import opik
+
+opik.configure(
+    use_local=True,
+    project_name="my-project"  # Optional
+)
+```
+
+<ParamField path="use_local" type="boolean">
+  Set to `True` to connect to a local Opik instance at `http://localhost:5173/`
+</ParamField>
+
+### Custom URL Configuration
+
+For self-hosted instances at custom URLs:
+
+```python
+import opik
+
+opik.configure(
+    url="https://opik.your-domain.com/api",
+    api_key="YOUR_API_KEY",  # If authentication is enabled
+    workspace="YOUR_WORKSPACE"
+)
+```
+
+<ParamField path="url" type="string">
+  Custom Opik server URL (must include the API path)
+</ParamField>
+
+## Environment Variables
+
+You can also configure Opik using environment variables:
+
+```bash
+export OPIK_API_KEY="your-api-key"
+export OPIK_WORKSPACE="your-workspace"
+export OPIK_PROJECT_NAME="my-project"
+```
+
+### Available Environment Variables
+
+<ResponseField name="OPIK_API_KEY" type="string">
+  Your Opik API key
+</ResponseField>
+
+<ResponseField name="OPIK_WORKSPACE" type="string">
+  Your workspace name
+</ResponseField>
+
+<ResponseField name="OPIK_PROJECT_NAME" type="string">
+  Default project name
+</ResponseField>
+
+<ResponseField name="OPIK_URL_OVERRIDE" type="string">
+  Custom Opik server URL
+</ResponseField>
+
+## Opik Client Configuration
+
+When creating an `Opik` client instance, you can override the global configuration:
+
+```python
+from opik import Opik
+
+client = Opik(
+    project_name="specific-project",
+    workspace="specific-workspace",
+    host="https://custom-host.com/api",
+    api_key="specific-api-key"
+)
+```
+
+### Client Parameters
+
+<ParamField path="project_name" type="string">
+  The name of the project. If not provided, traces will be logged to the `Default Project`
+</ParamField>
+
+<ParamField path="workspace" type="string">
+  The workspace name. Defaults to `default` if not provided
+</ParamField>
+
+<ParamField path="host" type="string">
+  The Opik server URL. Defaults to `https://www.comet.com/opik/api` for cloud
+</ParamField>
+
+<ParamField path="api_key" type="string">
+  API key for authentication (ignored for local installations)
+</ParamField>
+
+## Dynamic Tracing Control
+
+Control tracing behavior at runtime without code changes:
+
+```python
+import opik
+
+# Disable tracing globally
+opik.set_tracing_active(False)
+
+# Check if tracing is active
+if opik.is_tracing_active():
+    print("Tracing is enabled")
+else:
+    print("Tracing is disabled")
+
+# Re-enable tracing
+opik.set_tracing_active(True)
+
+# Reset to configuration default
+opik.reset_tracing_to_config_default()
+```
+
+### Use Cases for Dynamic Tracing
+
+<CardGroup cols={2}>
+  <Card title="Performance Optimization" icon="gauge">
+    Disable tracing in high-throughput production systems
+  </Card>
+  <Card title="Conditional Tracing" icon="filter">
+    Enable tracing only for specific user types or requests
+  </Card>
+  <Card title="Debugging" icon="bug">
+    Toggle tracing for troubleshooting without redeployment
+  </Card>
+  <Card title="Sampling Strategies" icon="chart-scatter">
+    Implement custom sampling to reduce data volume
+  </Card>
+</CardGroup>
+
+**Important**: Calls already in progress when you disable tracing will still complete their logging.
+
+## Configuration File
+
+When you run `opik configure`, the SDK creates a configuration file at:
+
+- **Linux/macOS**: `~/.opik.config`
+- **Windows**: `%USERPROFILE%\.opik.config`
+
+This file stores your API key, workspace, and URL settings.
+
+### Manual Configuration File
+
+You can manually create or edit the configuration file:
+
+```ini
+[opik]
+api_key=your-api-key
+workspace=your-workspace
+url_override=https://www.comet.com/opik/api
+```
+
+## Getting Your API Key
+
+To get your Opik API key from Comet.com:
+
+<Steps>
+  <Step title="Log in to Comet">
+    Visit [https://www.comet.com](https://www.comet.com) and log in
+  </Step>
+  
+  <Step title="Navigate to Settings">
+    Click on your profile and go to Settings
+  </Step>
+  
+  <Step title="Generate API Key">
+    Navigate to the API Keys section and create a new key
+  </Step>
+  
+  <Step title="Copy and Configure">
+    Copy the API key and use it in `opik configure` or your code
+  </Step>
+</Steps>
+
+## Authentication Check
+
+Verify your configuration and authentication:
+
+```python
+from opik import Opik
+
+client = Opik()
+
+try:
+    client.auth_check()
+    print("Authentication successful!")
+except Exception as e:
+    print(f"Authentication failed: {e}")
+```
+
+## Advanced Configuration
+
+### Batch Processing
+
+For advanced use cases, you can enable batching (use with caution):
+
+```python
+from opik import Opik
+
+# Warning: Enabling batching can lead to data loss if not handled properly
+client = Opik(_use_batching=True)
+```
+
+<Warning>
+  The `_use_batching` parameter is intended for internal use only. Enabling it without proper understanding can lead to data loss.
+</Warning>
+
+### Flush Timeout
+
+Configure the timeout for flushing traces:
+
+```python
+import opik
+
+# Flush with custom timeout (in seconds)
+opik.flush_tracker(timeout=30)
+```
+
+## Configuration Priority
+
+Configuration is resolved in the following priority order (highest to lowest):
+
+1. **Direct parameters** passed to `Opik()` constructor
+2. **Programmatic configuration** via `opik.configure()`
+3. **Environment variables**
+4. **Configuration file** (`~/.opik.config`)
+5. **Default values**
+
+## Examples
+
+### Example 1: Cloud Configuration
+
+```python
+import opik
+
+# Configure for Comet.com cloud
+opik.configure(
+    api_key="comet_abc123...",
+    workspace="my-team",
+    project_name="production-app"
+)
+
+# Start tracing
+@opik.track
+def my_function():
+    return "Hello, Opik!"
+
+my_function()
+opik.flush_tracker()
+```
+
+### Example 2: Local Development
+
+```python
+import opik
+
+# Configure for local Opik instance
+opik.configure(use_local=True)
+
+# Create client
+client = opik.Opik(project_name="dev-experiments")
+
+# Your code here
+```
+
+### Example 3: Multiple Environments
+
+```python
+import opik
+import os
+
+# Configure based on environment
+if os.getenv("ENV") == "production":
+    opik.configure(
+        api_key=os.getenv("OPIK_API_KEY"),
+        workspace="production",
+        project_name="prod-app"
+    )
+else:
+    opik.configure(use_local=True, project_name="dev-app")
+```
+
+### Example 4: Conditional Tracing
+
+```python
+import opik
+
+# Enable tracing only for specific users
+def process_request(user_id: str, query: str):
+    # Enable tracing for premium users
+    if is_premium_user(user_id):
+        opik.set_tracing_active(True)
+    else:
+        opik.set_tracing_active(False)
+    
+    # Your processing logic
+    result = my_llm_function(query)
+    
+    return result
+```
+
+## Troubleshooting
+
+### Configuration Not Found
+
+If the SDK can't find your configuration:
+
+1. Run `opik configure` again
+2. Check that the configuration file exists
+3. Verify environment variables are set correctly
+
+### Connection Errors
+
+If you're experiencing connection issues:
+
+1. Verify the URL is correct (include `/api` path)
+2. Check your network connectivity
+3. For self-hosted instances, ensure the server is running
+4. Verify your API key is valid
+
+### Permission Errors
+
+If you get authentication errors:
+
+1. Verify your API key is correct
+2. Check that you have access to the workspace
+3. Run `client.auth_check()` to test authentication
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client API" icon="code" href="/sdk/python/client">
+    Learn about the Opik client API
+  </Card>
+  <Card title="Tracing" icon="route" href="/sdk/python/tracing">
+    Start tracing your functions
+  </Card>
+</CardGroup>

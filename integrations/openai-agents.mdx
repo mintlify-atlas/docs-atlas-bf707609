@@ -1,0 +1,256 @@
+---
+title: OpenAI Agents
+description: Integrate Opik with OpenAI Agents framework for comprehensive observability of agent executions, tool calls, and guardrails.
+---
+
+OpenAI's [Agents framework](https://platform.openai.com/docs/guides/agents) provides a rich set of building blocks for creating advanced AI applications with models, tools, knowledge, memory, and built-in guardrails.
+
+## Overview
+
+Opik's integration with OpenAI Agents requires just one line of code and provides:
+
+- **Automatic tracing** of all agent executions and tool calls
+- **Token usage and cost tracking** for each LLM call
+- **Guardrails monitoring** with parallel execution tracking
+- **Knowledge and memory integration** visibility
+- **Detailed execution flow** analysis in the Opik platform
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Models" icon="robot">
+    Support for all OpenAI models with automatic tracking
+  </Card>
+  <Card title="Tools" icon="wrench">
+    Function calling and tool execution monitoring
+  </Card>
+  <Card title="Knowledge & Memory" icon="brain">
+    Vector store and embeddings integration tracking
+  </Card>
+  <Card title="Guardrails" icon="shield">
+    Parallel guardrails execution monitoring
+  </Card>
+</CardGroup>
+
+## Installation
+
+```bash
+pip install opik openai-agents
+```
+
+## Configuration
+
+<Steps>
+  <Step title="Configure Opik">
+    Set up your Opik workspace:
+    
+    ```bash
+    opik configure
+    ```
+  </Step>
+  
+  <Step title="Set OpenAI API Key">
+    Configure your OpenAI API credentials:
+    
+    ```bash
+    export OPENAI_API_KEY="your-api-key"
+    ```
+    
+    Or programmatically:
+    
+    ```python
+    import os
+    import getpass
+    
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter your OpenAI API key: ")
+    ```
+  </Step>
+</Steps>
+
+## Usage
+
+### Basic Agent Tracking
+
+Enable logging to Opik with two lines of code:
+
+```python
+import os
+from agents import Agent, Runner, set_trace_processors
+from opik.integrations.openai.agents import OpikTracingProcessor
+
+# Set project name for organization
+os.environ["OPIK_PROJECT_NAME"] = "openai-agents-demo"
+
+# Enable Opik tracking
+set_trace_processors(processors=[OpikTracingProcessor()])
+
+# Create and run your agent
+agent = Agent(name="Assistant", instructions="You are a helpful assistant")
+
+result = Runner.run_sync(agent, "Write a haiku about recursion in programming.")
+print(result.final_output)
+```
+
+<Note>
+  The integration automatically tracks token usage and costs for each LLM call, aggregated for the entire agent execution.
+</Note>
+
+### Agents with Function Tools
+
+The `OpikTracingProcessor` automatically captures all tool calls:
+
+```python
+from agents import Agent, Runner, function_tool, set_trace_processors
+from opik.integrations.openai.agents import OpikTracingProcessor
+
+set_trace_processors(processors=[OpikTracingProcessor()])
+
+@function_tool
+def calculate_average(numbers: list[float]) -> float:
+    """Calculate the average of a list of numbers."""
+    return sum(numbers) / len(numbers)
+
+@function_tool  
+def get_recommendation(topic: str, user_level: str) -> str:
+    """Get learning recommendations based on topic and user level."""
+    recommendations = {
+        "python": {
+            "beginner": "Start with Python.org's tutorial and Python Crash Course book.",
+            "intermediate": "Explore Flask/Django, decorators, and data structures.",
+            "advanced": "Study Python internals and contribute to open source."
+        },
+        "machine learning": {
+            "beginner": "Start with Andrew Ng's course and scikit-learn.",
+            "intermediate": "Dive into TensorFlow/PyTorch and real projects.",
+            "advanced": "Research papers and implement algorithms from scratch."
+        }
+    }
+    
+    topic_lower = topic.lower()
+    level_lower = user_level.lower()
+    
+    if topic_lower in recommendations and level_lower in recommendations[topic_lower]:
+        return recommendations[topic_lower][level_lower]
+    return f"For {topic} at {user_level} level: Focus on fundamentals and practice."
+
+# Create agent with tools
+agent = Agent(
+    name="Learning Advisor",
+    instructions="""You are an expert programming tutor with access to tools for:
+    1. Calculating averages for metrics and grades
+    2. Providing personalized learning recommendations
+    
+    Be encouraging and provide structured learning paths.""",
+    tools=[calculate_average, get_recommendation]
+)
+
+# Run agent with tool calls - all tracked automatically
+result = Runner.run_sync(
+    agent,
+    "I'm a beginner in Python. What should I study and what's a good target for practice hours?"
+)
+print(result.final_output)
+```
+
+### Multi-Agent Systems
+
+Track complex multi-agent workflows:
+
+```python
+from agents import Agent, Runner, set_trace_processors
+from opik.integrations.openai.agents import OpikTracingProcessor
+
+set_trace_processors(processors=[OpikTracingProcessor()])
+
+# Create specialized agents
+researcher = Agent(
+    name="Researcher",
+    instructions="Research topics and gather information."
+)
+
+writer = Agent(
+    name="Writer",
+    instructions="Write clear, engaging content based on research."
+)
+
+editor = Agent(
+    name="Editor",
+    instructions="Review and improve written content."
+)
+
+# Coordinate agents
+research = Runner.run_sync(researcher, "Research AI safety")
+content = Runner.run_sync(writer, f"Write about: {research.final_output}")
+final = Runner.run_sync(editor, f"Edit: {content.final_output}")
+```
+
+### Setting Project Name
+
+Organize traces by project:
+
+```python
+import os
+from opik.integrations.openai.agents import OpikTracingProcessor
+
+# Option 1: Environment variable
+os.environ["OPIK_PROJECT_NAME"] = "my-project"
+
+# Option 2: Pass to processor
+processor = OpikTracingProcessor(project_name="my-project")
+set_trace_processors(processors=[processor])
+```
+
+## Tracking Guardrails
+
+Monitor guardrails that run in parallel with agent execution:
+
+```python
+from agents import Agent, Runner, set_trace_processors
+from opik.integrations.openai.agents import OpikTracingProcessor
+
+set_trace_processors(processors=[OpikTracingProcessor()])
+
+# Agent with guardrails configured
+agent = Agent(
+    name="SafeAssistant",
+    instructions="You are a helpful assistant.",
+    # Guardrails configuration here
+)
+
+# Guardrails execution is tracked alongside agent execution
+result = Runner.run_sync(agent, "User query here")
+```
+
+## Viewing Traces
+
+All agent executions, tool calls, and guardrails are logged to the Opik platform with:
+
+- **Execution timeline** showing the flow of agent operations
+- **Token usage** and **cost** for each LLM call
+- **Input/output** for each step
+- **Error tracking** with stack traces
+- **Metadata** including model names and parameters
+
+## Cost Tracking
+
+<Note>
+  Token usage and costs are automatically calculated for all OpenAI model calls and aggregated at both the span and trace levels.
+</Note>
+
+## API Reference
+
+<Card title="OpikTracingProcessor" href="/sdk/python/overview">
+  Configure OpenAI Agents tracing with project name and custom settings
+</Card>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="OpenAI Agents Guide" href="https://platform.openai.com/docs/guides/agents" icon="book">
+    Official OpenAI Agents documentation
+  </Card>
+  <Card title="Opik Tracing" href="/tracing/log-traces" icon="chart-line">
+    Learn more about Opik tracing capabilities
+  </Card>
+</CardGroup>

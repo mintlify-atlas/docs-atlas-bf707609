@@ -1,0 +1,514 @@
+---
+title: Anthropic Integration
+description: Track and monitor Anthropic Claude API calls with Opik
+---
+
+Opik provides native integration with Anthropic's Claude API, allowing you to automatically trace and monitor all your Claude API calls including messages, streaming, and multi-modal interactions.
+
+## Installation
+
+First, ensure you have both Opik and Anthropic installed:
+
+```bash
+pip install opik anthropic
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure Opik">
+    Initialize Opik in your application:
+
+    ```python
+    import opik
+
+    opik.configure()
+    ```
+  </Step>
+
+  <Step title="Track your Anthropic client">
+    Wrap your Anthropic client with Opik tracking:
+
+    ```python
+    import anthropic
+    from opik.integrations.anthropic import track_anthropic
+
+    client = anthropic.Anthropic()
+    client = track_anthropic(client)
+    ```
+  </Step>
+
+  <Step title="Use Anthropic as normal">
+    All your Claude API calls will now be automatically tracked:
+
+    ```python
+    response = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=100,
+        messages=[
+            {"role": "user", "content": "Tell me a fact about AI"}
+        ]
+    )
+    ```
+  </Step>
+</Steps>
+
+## Supported Features
+
+The Opik Anthropic integration tracks calls to:
+
+- `client.messages.create()` - Standard message completions
+- `client.messages.stream()` - Streaming responses with context manager
+- All Anthropic client variants:
+  - `anthropic.Anthropic` - Standard Anthropic client
+  - `anthropic.AsyncAnthropic` - Async Anthropic client
+  - `anthropic.AnthropicBedrock` - Anthropic on AWS Bedrock
+  - `anthropic.AsyncAnthropicBedrock` - Async Bedrock client
+  - `anthropic.AnthropicVertex` - Anthropic on Google Vertex AI
+  - `anthropic.AsyncAnthropicVertex` - Async Vertex client
+
+<Note>
+The integration automatically detects which Anthropic client variant you're using and tracks it appropriately.
+</Note>
+
+## Usage Examples
+
+### Basic Message Creation
+
+```python
+import anthropic
+from opik import track, flush_tracker
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.Anthropic()
+client = track_anthropic(client)
+
+@track()
+def ask_claude(question: str):
+    response = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=100,
+        system="You are a helpful assistant",
+        messages=[
+            {"role": "user", "content": question}
+        ]
+    )
+    return response.content[0].text
+
+answer = ask_claude("What is the capital of France?")
+print(answer)
+flush_tracker()
+```
+
+### Streaming Responses
+
+The integration automatically handles streaming with the context manager pattern:
+
+```python
+import anthropic
+from opik import track, flush_tracker
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.Anthropic()
+client = track_anthropic(client)
+
+@track()
+def stream_response(prompt: str):
+    with client.messages.stream(
+        model="claude-sonnet-4",
+        max_tokens=200,
+        messages=[{"role": "user", "content": prompt}]
+    ) as stream:
+        for text in stream.text_stream:
+            print(text, end="", flush=True)
+        print()
+
+stream_response("Write a haiku about programming")
+flush_tracker()
+```
+
+<Note>
+When streaming, Opik accumulates the delta events and creates a complete trace once the stream is consumed. The span is automatically finalized when exiting the context manager.
+</Note>
+
+### Async Support
+
+The integration works seamlessly with async Anthropic clients:
+
+```python
+import asyncio
+import anthropic
+from opik import track, flush_tracker
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.AsyncAnthropic()
+client = track_anthropic(client)
+
+@track()
+async def async_chat(message: str):
+    response = await client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=100,
+        messages=[{"role": "user", "content": message}]
+    )
+    return response.content[0].text
+
+async def main():
+    result = await async_chat("Hello Claude!")
+    print(result)
+    flush_tracker()
+
+asyncio.run(main())
+```
+
+### Multi-turn Conversations
+
+```python
+import anthropic
+from opik import track, flush_tracker
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.Anthropic()
+client = track_anthropic(client)
+
+@track()
+def conversation():
+    messages = [
+        {"role": "user", "content": "Hi, I'm learning about AI."},
+    ]
+    
+    # First response
+    response1 = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=100,
+        messages=messages
+    )
+    
+    # Add assistant response to conversation
+    messages.append({
+        "role": "assistant",
+        "content": response1.content[0].text
+    })
+    
+    # Follow-up question
+    messages.append({
+        "role": "user",
+        "content": "Can you explain neural networks?"
+    })
+    
+    response2 = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=200,
+        messages=messages
+    )
+    
+    return response2.content[0].text
+
+result = conversation()
+print(result)
+flush_tracker()
+```
+
+### Using System Prompts
+
+```python
+import anthropic
+from opik import track
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.Anthropic()
+client = track_anthropic(client)
+
+@track()
+def analyze_sentiment(text: str):
+    response = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=50,
+        system="You are a sentiment analysis expert. Respond with only: positive, negative, or neutral.",
+        messages=[
+            {"role": "user", "content": f"Analyze this text: {text}"}
+        ]
+    )
+    return response.content[0].text.strip()
+
+sentiment = analyze_sentiment("I absolutely love this product!")
+print(f"Sentiment: {sentiment}")
+```
+
+## Configuration Options
+
+### Project Name
+
+Specify a custom project name for organizing your traces:
+
+```python
+client = track_anthropic(client, project_name="claude-experiments")
+```
+
+### Bedrock Configuration
+
+When using Anthropic on AWS Bedrock, the integration automatically captures AWS-specific metadata:
+
+```python
+import anthropic
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.AnthropicBedrock(
+    aws_region="us-east-1"
+)
+client = track_anthropic(client)
+
+# Traces will include aws_region in metadata
+response = client.messages.create(
+    model="anthropic.claude-3-sonnet-20240229-v1:0",
+    max_tokens=100,
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+### Vertex AI Configuration
+
+When using Anthropic on Google Vertex AI:
+
+```python
+import anthropic
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.AnthropicVertex(
+    region="us-central1",
+    project_id="my-gcp-project"
+)
+client = track_anthropic(client)
+
+# Traces will include region and project_id in metadata
+response = client.messages.create(
+    model="claude-3-sonnet@20240229",
+    max_tokens=100,
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+## What Gets Tracked
+
+For each Anthropic API call, Opik captures:
+
+<CardGroup cols={2}>
+  <Card title="Input" icon="arrow-right-to-bracket">
+    - User messages
+    - System prompts
+    - All request parameters
+    - Multi-modal content
+  </Card>
+
+  <Card title="Output" icon="arrow-left-from-bracket">
+    - Assistant responses
+    - Content blocks
+    - Stop reason
+    - Response metadata
+  </Card>
+
+  <Card title="Metadata" icon="tags">
+    - Model name
+    - Response ID
+    - Base URL
+    - Platform-specific info (AWS region, GCP project)
+  </Card>
+
+  <Card title="Usage" icon="chart-line">
+    - Input tokens
+    - Output tokens
+    - Cache creation tokens
+    - Cache read tokens
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Nested Tracking
+
+Combine Anthropic calls with custom tracked functions:
+
+```python
+import anthropic
+from opik import track, flush_tracker
+from opik.integrations.anthropic import track_anthropic
+
+client = anthropic.Anthropic()
+client = track_anthropic(client)
+
+@track()
+def generate_outline(topic: str):
+    response = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=200,
+        messages=[{
+            "role": "user",
+            "content": f"Create an outline for a blog post about {topic}"
+        }]
+    )
+    return response.content[0].text
+
+@track()
+def write_section(outline_point: str):
+    response = client.messages.create(
+        model="claude-sonnet-4",
+        max_tokens=300,
+        messages=[{
+            "role": "user",
+            "content": f"Write a detailed section about: {outline_point}"
+        }]
+    )
+    return response.content[0].text
+
+@track()
+def create_blog_post(topic: str):
+    outline = generate_outline(topic)
+    # Parse outline and write each section...
+    sections = [write_section(point) for point in outline.split("\n")[:3]]
+    return "\n\n".join(sections)
+
+post = create_blog_post("Machine Learning")
+flush_tracker()
+```
+
+### Multiple Projects
+
+Track different use cases in separate projects:
+
+```python
+import anthropic
+from opik.integrations.anthropic import track_anthropic
+
+# Customer support bot
+support_client = anthropic.Anthropic()
+support_client = track_anthropic(support_client, project_name="customer-support")
+
+# Content generation
+content_client = anthropic.Anthropic()
+content_client = track_anthropic(content_client, project_name="content-gen")
+```
+
+## Limitations
+
+<Note>
+The following Anthropic features are not currently tracked:
+
+- `client.beta.messages.batches.create()` - Batch API (warning logged)
+- `client.completions.create()` - Legacy completions API (warning logged)
+
+When you call these methods, Opik will log a warning but the call will proceed normally.
+</Note>
+
+## Best Practices
+
+<Steps>
+  <Step title="Always flush at the end">
+    Call `opik.flush_tracker()` to ensure all traces are sent:
+
+    ```python
+    from opik import flush_tracker
+
+    # Your code here...
+    
+    flush_tracker()
+    ```
+  </Step>
+
+  <Step title="Use system prompts for consistency">
+    Define behavior with system prompts to improve tracking insights:
+
+    ```python
+    response = client.messages.create(
+        system="You are a helpful coding assistant.",
+        model="claude-sonnet-4",
+        messages=[...]
+    )
+    ```
+  </Step>
+
+  <Step title="Consume entire streams">
+    Always consume streaming responses completely:
+
+    ```python
+    with client.messages.stream(...) as stream:
+        for text in stream.text_stream:
+            process(text)
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Traces not appearing
+
+Make sure to:
+1. Call `opik.configure()` before creating the client
+2. Call `opik.flush_tracker()` at the end of your script
+3. Verify your API keys are set correctly
+
+### Streaming not tracked properly
+
+Ensure you use the context manager pattern:
+
+```python
+# Good - uses context manager
+with client.messages.stream(...) as stream:
+    for text in stream.text_stream:
+        print(text)
+
+# Bad - may not track properly
+stream = client.messages.stream(...)
+```
+
+### Double tracking
+
+The integration is idempotent - calling `track_anthropic()` multiple times on the same client is safe and won't create duplicate traces.
+
+## Reference
+
+### `track_anthropic()`
+
+```python
+def track_anthropic(
+    anthropic_client: AnthropicClient,
+    project_name: Optional[str] = None,
+) -> AnthropicClient:
+    """
+    Adds Opik tracking to an Anthropic client.
+    
+    Supports:
+    - anthropic.Anthropic
+    - anthropic.AsyncAnthropic
+    - anthropic.AnthropicBedrock
+    - anthropic.AsyncAnthropicBedrock
+    - anthropic.AnthropicVertex
+    - anthropic.AsyncAnthropicVertex
+    
+    Args:
+        anthropic_client: An instance of an Anthropic client
+        project_name: Optional project name for organizing traces
+    
+    Returns:
+        The modified client with Opik tracking enabled
+    """
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" href="/evaluation/overview" icon="chart-bar">
+    Learn how to evaluate your Claude model outputs
+  </Card>
+
+  <Card title="Prompts" href="/advanced/prompt-management" icon="message">
+    Manage and version your prompts
+  </Card>
+
+  <Card title="Datasets" href="/evaluation/datasets" icon="database">
+    Create datasets for testing
+  </Card>
+
+  <Card title="Other Integrations" href="/integrations" icon="plug">
+    Explore more LLM integrations
+  </Card>
+</CardGroup>

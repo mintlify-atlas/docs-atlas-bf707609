@@ -1,0 +1,421 @@
+---
+title: "Production Dashboards"
+description: "Visualize and monitor your LLM application metrics with Opik dashboards"
+---
+
+Opik dashboards provide real-time visibility into your production LLM applications, enabling you to monitor key metrics, identify trends, and make data-driven decisions about your AI systems.
+
+## Overview
+
+Dashboards in Opik help you:
+
+- **Monitor key metrics** - Track feedback scores, trace counts, token usage, and costs over time
+- **Identify trends** - Spot patterns in usage, performance, and quality metrics
+- **Analyze performance** - Understand latency, error rates, and throughput
+- **Track costs** - Monitor token consumption and associated expenses across models
+- **Compare models** - Evaluate different models and configurations side-by-side
+
+## Accessing Dashboards
+
+Dashboards are available in the Opik UI after logging traces to your projects. Navigate to your project to view:
+
+1. **Project Overview Dashboard** - High-level metrics for your project
+2. **Traces Timeline** - Trace activity over time
+3. **Feedback Scores** - Aggregate feedback metrics
+4. **Token Usage** - Token consumption and cost tracking
+5. **Custom Dashboards** - Build your own visualizations
+
+## Key Metrics to Monitor
+
+### Trace Volume and Activity
+
+Monitor the number of traces logged over time to understand usage patterns:
+
+```python
+import opik
+from datetime import datetime, timedelta
+
+client = opik.Opik()
+
+# Get trace counts for the last 7 days
+start_date = (datetime.now() - timedelta(days=7)).isoformat() + "Z"
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{start_date}"',
+    max_results=10000,
+)
+
+print(f"Total traces in last 7 days: {len(traces)}")
+print(f"Average traces per day: {len(traces) / 7:.0f}")
+```
+
+### Feedback Score Trends
+
+Track how your application quality evolves over time:
+
+```python
+import opik
+from collections import defaultdict
+from datetime import datetime
+
+client = opik.Opik()
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy is_not_empty',
+    max_results=5000,
+)
+
+# Calculate average feedback scores
+scores = defaultdict(list)
+for trace in traces:
+    if hasattr(trace, 'feedback_scores') and trace.feedback_scores:
+        for score in trace.feedback_scores:
+            scores[score.name].append(score.value)
+
+# Display averages
+for score_name, values in scores.items():
+    avg_score = sum(values) / len(values)
+    print(f"{score_name}: {avg_score:.2f} (from {len(values)} traces)")
+```
+
+### Token Usage and Costs
+
+Monitor token consumption and costs across your application:
+
+```python
+import opik
+from datetime import datetime, timedelta
+
+client = opik.Opik()
+
+# Get recent traces with usage data
+start_date = (datetime.now() - timedelta(days=1)).isoformat() + "Z"
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{start_date}"',
+    max_results=10000,
+)
+
+# Aggregate token usage
+total_prompt_tokens = 0
+total_completion_tokens = 0
+total_cost = 0
+
+for trace in traces:
+    if trace.usage:
+        total_prompt_tokens += trace.usage.get('prompt_tokens', 0)
+        total_completion_tokens += trace.usage.get('completion_tokens', 0)
+    if trace.total_estimated_cost:
+        total_cost += trace.total_estimated_cost
+
+print(f"Last 24 hours:")
+print(f"  Prompt tokens: {total_prompt_tokens:,}")
+print(f"  Completion tokens: {total_completion_tokens:,}")
+print(f"  Total tokens: {(total_prompt_tokens + total_completion_tokens):,}")
+print(f"  Estimated cost: ${total_cost:.2f}")
+```
+
+### Model Performance Comparison
+
+Compare different models in your production environment:
+
+```python
+import opik
+from collections import defaultdict
+
+client = opik.Opik()
+
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=10000,
+)
+
+# Group by model
+model_metrics = defaultdict(lambda: {
+    'count': 0,
+    'total_tokens': 0,
+    'total_cost': 0,
+    'durations': [],
+    'scores': [],
+})
+
+for trace in traces:
+    if trace.model:
+        metrics = model_metrics[trace.model]
+        metrics['count'] += 1
+        
+        if trace.usage:
+            metrics['total_tokens'] += trace.usage.get('total_tokens', 0)
+        
+        if trace.total_estimated_cost:
+            metrics['total_cost'] += trace.total_estimated_cost
+        
+        if hasattr(trace, 'end_time') and hasattr(trace, 'start_time'):
+            if trace.end_time and trace.start_time:
+                duration = (trace.end_time - trace.start_time).total_seconds()
+                metrics['durations'].append(duration)
+        
+        if hasattr(trace, 'feedback_scores') and trace.feedback_scores:
+            for score in trace.feedback_scores:
+                if score.name == 'accuracy':
+                    metrics['scores'].append(score.value)
+
+# Display comparison
+for model, metrics in sorted(model_metrics.items()):
+    avg_duration = sum(metrics['durations']) / len(metrics['durations']) if metrics['durations'] else 0
+    avg_score = sum(metrics['scores']) / len(metrics['scores']) if metrics['scores'] else 0
+    
+    print(f"\n{model}:")
+    print(f"  Requests: {metrics['count']}")
+    print(f"  Avg duration: {avg_duration:.2f}s")
+    print(f"  Total tokens: {metrics['total_tokens']:,}")
+    print(f"  Total cost: ${metrics['total_cost']:.2f}")
+    print(f"  Avg accuracy: {avg_score:.2f}")
+```
+
+## Dashboard Metrics Reference
+
+### Trace Metrics
+
+<Tabs>
+  <Tab title="Volume Metrics">
+    - **Total Traces** - Number of traces logged
+    - **Traces per Day/Hour** - Request rate over time
+    - **Active Users** - Unique users or sessions
+    - **Thread Count** - Number of unique conversations
+  </Tab>
+  <Tab title="Performance Metrics">
+    - **Average Duration** - Mean execution time
+    - **P95/P99 Latency** - Tail latency percentiles
+    - **Error Rate** - Percentage of failed traces
+    - **Success Rate** - Percentage of successful traces
+  </Tab>
+  <Tab title="Quality Metrics">
+    - **Average Feedback Scores** - Mean scores by metric
+    - **Score Distribution** - Histogram of score values
+    - **Quality Trends** - Score changes over time
+    - **Low-Score Traces** - Traces below quality thresholds
+  </Tab>
+  <Tab title="Cost Metrics">
+    - **Total Tokens** - Cumulative token usage
+    - **Tokens per Request** - Average tokens consumed
+    - **Estimated Cost** - Calculated based on usage
+    - **Cost per Model** - Breakdown by LLM provider
+  </Tab>
+</Tabs>
+
+## Building Custom Analytics
+
+### Time-Series Analysis
+
+Track metrics over time to identify trends:
+
+```python
+import opik
+from datetime import datetime, timedelta
+from collections import defaultdict
+
+client = opik.Opik()
+
+# Get last 30 days of traces
+start_date = (datetime.now() - timedelta(days=30)).isoformat() + "Z"
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{start_date}"',
+    max_results=50000,
+)
+
+# Group by day
+daily_stats = defaultdict(lambda: {
+    'count': 0,
+    'tokens': 0,
+    'cost': 0,
+    'avg_score': [],
+})
+
+for trace in traces:
+    day = trace.start_time.date() if trace.start_time else None
+    if day:
+        stats = daily_stats[day]
+        stats['count'] += 1
+        
+        if trace.usage:
+            stats['tokens'] += trace.usage.get('total_tokens', 0)
+        
+        if trace.total_estimated_cost:
+            stats['cost'] += trace.total_estimated_cost
+        
+        if hasattr(trace, 'feedback_scores') and trace.feedback_scores:
+            for score in trace.feedback_scores:
+                stats['avg_score'].append(score.value)
+
+# Display daily trends
+for day in sorted(daily_stats.keys()):
+    stats = daily_stats[day]
+    avg_score = sum(stats['avg_score']) / len(stats['avg_score']) if stats['avg_score'] else 0
+    
+    print(f"{day}: {stats['count']} traces, {stats['tokens']:,} tokens, ${stats['cost']:.2f}, score: {avg_score:.2f}")
+```
+
+### User Segmentation Analysis
+
+Analyze metrics by user segments:
+
+```python
+import opik
+from collections import defaultdict
+
+client = opik.Opik()
+
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=10000,
+)
+
+# Segment by user metadata
+segment_metrics = defaultdict(lambda: {
+    'count': 0,
+    'avg_duration': [],
+    'avg_score': [],
+})
+
+for trace in traces:
+    # Extract user segment from metadata
+    segment = 'unknown'
+    if trace.metadata and 'user_tier' in trace.metadata:
+        segment = trace.metadata['user_tier']
+    
+    metrics = segment_metrics[segment]
+    metrics['count'] += 1
+    
+    # Calculate durations and scores as needed
+    if hasattr(trace, 'feedback_scores') and trace.feedback_scores:
+        for score in trace.feedback_scores:
+            metrics['avg_score'].append(score.value)
+
+for segment, metrics in segment_metrics.items():
+    avg_score = sum(metrics['avg_score']) / len(metrics['avg_score']) if metrics['avg_score'] else 0
+    print(f"{segment}: {metrics['count']} requests, avg score: {avg_score:.2f}")
+```
+
+## Visualization Best Practices
+
+<Steps>
+  <Step title="Define Key Metrics">
+    Identify the most important metrics for your use case (quality, cost, performance, etc.)
+  </Step>
+  <Step title="Set Baselines">
+    Establish baseline values for your metrics to identify anomalies and regressions
+  </Step>
+  <Step title="Monitor Trends">
+    Look at trends over time rather than point-in-time snapshots
+  </Step>
+  <Step title="Segment Data">
+    Break down metrics by model, user type, feature, or other relevant dimensions
+  </Step>
+  <Step title="Set Alerts">
+    Use online evaluation rules to automatically flag issues (see Online Evaluation)
+  </Step>
+</Steps>
+
+## Common Dashboard Patterns
+
+### Production Health Dashboard
+
+Monitor overall system health:
+
+- Trace volume (last 24h, last 7d)
+- Error rate trend
+- Average latency (P50, P95, P99)
+- Success rate percentage
+- Active users/sessions
+
+### Quality Dashboard
+
+Track application quality metrics:
+
+- Average feedback scores by metric
+- Score distribution histograms
+- Low-quality trace count
+- Quality trends over time
+- Quality by model comparison
+
+### Cost Dashboard
+
+Manage LLM costs:
+
+- Daily/weekly/monthly token usage
+- Cost breakdown by model
+- Cost per request
+- Most expensive traces
+- Cost trends and forecasts
+
+### User Experience Dashboard
+
+Focus on user-facing metrics:
+
+- Response time percentiles
+- User satisfaction scores
+- Conversation completion rate
+- User engagement metrics
+- Feature usage patterns
+
+<Warning>
+Remember to configure appropriate retention policies for your traces. High-volume applications may need to implement sampling or aggregation strategies to manage dashboard query performance.
+</Warning>
+
+## Integration with External Tools
+
+While Opik provides built-in dashboards, you can also export data for use in external visualization tools:
+
+```python
+import opik
+import json
+
+client = opik.Opik()
+
+# Export traces for external analysis
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=10000,
+)
+
+# Convert to format suitable for your analytics tool
+data_export = []
+for trace in traces:
+    data_export.append({
+        'id': trace.id,
+        'name': trace.name,
+        'start_time': trace.start_time.isoformat() if trace.start_time else None,
+        'duration': (trace.end_time - trace.start_time).total_seconds() if trace.end_time and trace.start_time else None,
+        'model': trace.model,
+        'tokens': trace.usage.get('total_tokens', 0) if trace.usage else 0,
+        'cost': trace.total_estimated_cost,
+        # Add other fields as needed
+    })
+
+# Export to JSON for external tools
+with open('traces_export.json', 'w') as f:
+    json.dump(data_export, f, indent=2)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Online Evaluation" icon="clipboard-check" href="/production/online-evaluation">
+    Set up automated quality checks for production traces
+  </Card>
+  <Card title="Feedback Scores" icon="star" href="/production/feedback-scores">
+    Learn how to log and analyze feedback scores
+  </Card>
+  <Card title="Monitoring" icon="chart-line" href="/production/monitoring">
+    Deep dive into production monitoring capabilities
+  </Card>
+  <Card title="Datasets" icon="database" href="/evaluation/datasets">
+    Create datasets from production data for evaluation
+  </Card>
+</CardGroup>

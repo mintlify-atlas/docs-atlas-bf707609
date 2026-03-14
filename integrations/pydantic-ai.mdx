@@ -1,0 +1,282 @@
+---
+title: Pydantic AI
+description: Integrate Opik with Pydantic AI for type-safe agent development with comprehensive tracing via OpenTelemetry and Logfire.
+---
+
+[Pydantic AI](https://ai.pydantic.dev/) is a Python agent framework designed to build production-grade applications with Generative AI. Pydantic AI's primary advantage is its integration of Pydantic's type-safe data validation, ensuring structured and reliable responses.
+
+## Overview
+
+Opik integrates with Pydantic AI through OpenTelemetry and Logfire, providing:
+
+- **Type-safe tracing** leveraging Pydantic's validation
+- **Automatic instrumentation** via Logfire
+- **Thread support** for conversational applications
+- **Comprehensive observability** for agent runs and model calls
+
+## Installation
+
+```bash
+pip install --upgrade pydantic-ai logfire 'logfire[httpx]'
+```
+
+## Configuration
+
+<Steps>
+  <Step title="Configure OpenTelemetry Endpoint">
+    Set the OTEL endpoint based on your deployment:
+    
+    <Tabs>
+      <Tab title="Opik Cloud">
+        ```bash
+        export OTEL_EXPORTER_OTLP_ENDPOINT=https://www.comet.com/opik/api/v1/private/otel
+        export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<your-api-key>,Comet-Workspace=default'
+        export OTEL_METRICS_EXPORTER=none
+        ```
+        
+        <Note>
+          Add `projectName=<your-project-name>` to the headers to log to a specific project.
+        </Note>
+      </Tab>
+      
+      <Tab title="Self-hosted">
+        ```bash
+        export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:5173/api/v1/private/otel
+        export OTEL_METRICS_EXPORTER=none
+        ```
+      </Tab>
+      
+      <Tab title="Enterprise">
+        ```bash
+        export OTEL_EXPORTER_OTLP_ENDPOINT=https://<comet-deployment-url>/opik/api/v1/private/otel
+        export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<your-api-key>,Comet-Workspace=default'
+        export OTEL_METRICS_EXPORTER=none
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+  
+  <Step title="Configure LLM Provider">
+    Set your LLM provider API key (example with OpenAI):
+    
+    ```bash
+    export OPENAI_API_KEY="your-api-key"
+    ```
+    
+    Or programmatically:
+    
+    ```python
+    import os
+    import getpass
+    
+    if "OPENAI_API_KEY" not in os.environ:
+        os.environ["OPENAI_API_KEY"] = getpass.getpass("Enter your OpenAI API key: ")
+    ```
+  </Step>
+</Steps>
+
+## Usage
+
+### Basic Agent Tracking
+
+Configure Logfire to send traces to Opik:
+
+```python
+import logfire
+from pydantic_ai import Agent
+import nest_asyncio
+
+# Enable async support in Jupyter notebooks
+nest_asyncio.apply()
+
+# Configure logfire to send traces to Opik via OpenTelemetry
+logfire.configure(
+    send_to_logfire=False,
+)
+logfire.instrument_pydantic_ai()
+
+# Create a simple agent
+agent = Agent(
+    "openai:gpt-4o",
+    system_prompt="Be concise, reply with one sentence.",
+)
+
+# Run the agent - traces are automatically sent to Opik
+result = agent.run_sync('Where does "hello world" come from?')
+print(result.data)
+```
+
+### Type-Safe Responses
+
+Leverage Pydantic's type validation for structured outputs:
+
+```python
+import logfire
+from pydantic import BaseModel
+from pydantic_ai import Agent
+
+logfire.configure(send_to_logfire=False)
+logfire.instrument_pydantic_ai()
+
+class CityInfo(BaseModel):
+    name: str
+    country: str
+    population: int
+    is_capital: bool
+
+agent = Agent(
+    "openai:gpt-4o",
+    result_type=CityInfo,
+    system_prompt="Extract city information from the user query.",
+)
+
+result = agent.run_sync("Tell me about Paris")
+print(f"City: {result.data.name}")
+print(f"Country: {result.data.country}")
+print(f"Population: {result.data.population}")
+print(f"Capital: {result.data.is_capital}")
+```
+
+### Agents with Tools
+
+Track agents that use custom tools:
+
+```python
+import logfire
+from pydantic_ai import Agent, RunContext
+import httpx
+
+logfire.configure(send_to_logfire=False)
+logfire.instrument_pydantic_ai()
+
+agent = Agent(
+    "openai:gpt-4o",
+    system_prompt="Use the weather tool to answer questions about weather.",
+)
+
+@agent.tool
+def get_weather(ctx: RunContext, city: str) -> str:
+    """Get the current weather for a city."""
+    # Simulated weather data
+    weather_data = {
+        "london": "Cloudy, 18°C",
+        "paris": "Sunny, 22°C",
+        "new york": "Rainy, 15°C",
+    }
+    return weather_data.get(city.lower(), "Weather data not available")
+
+result = agent.run_sync("What's the weather in London?")
+print(result.data)
+```
+
+### Logging Threads
+
+Group multiple agent calls into a conversation thread:
+
+```python
+import logfire
+from pydantic_ai import Agent
+
+logfire.configure(send_to_logfire=False)
+logfire.instrument_pydantic_ai()
+
+agent = Agent(
+    "openai:gpt-4o",
+    system_prompt="You are a helpful assistant.",
+)
+
+thread_id = "conversation-123"
+
+# All spans within this context are linked by thread_id
+with logfire.span("chat_turn", thread_id=thread_id):
+    result1 = agent.run_sync("What is machine learning?")
+    print(result1.data)
+
+with logfire.span("chat_turn", thread_id=thread_id):
+    result2 = agent.run_sync("Can you give me an example?")
+    print(result2.data)
+```
+
+### Async Agents
+
+Track asynchronous agent execution:
+
+```python
+import logfire
+from pydantic_ai import Agent
+import asyncio
+
+logfire.configure(send_to_logfire=False)
+logfire.instrument_pydantic_ai()
+
+agent = Agent(
+    "openai:gpt-4o",
+    system_prompt="You are a helpful assistant.",
+)
+
+async def run_agent():
+    result = await agent.run("Explain async programming")
+    return result.data
+
+result = asyncio.run(run_agent())
+print(result)
+```
+
+## Advanced Configuration
+
+### Custom Project Names
+
+Log traces to a specific project:
+
+```bash
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<api-key>,Comet-Workspace=default,projectName=pydantic-ai-project'
+```
+
+### Custom Workspaces
+
+Log to a different workspace:
+
+```bash
+export OTEL_EXPORTER_OTLP_HEADERS='Authorization=<api-key>,Comet-Workspace=my-workspace'
+```
+
+## Viewing Traces
+
+All Pydantic AI agent executions are logged to Opik with:
+
+- **Agent runs** and model calls
+- **Tool executions** with inputs and outputs
+- **Type validation** results
+- **Thread information** for conversational agents
+- **Timing and performance** metrics
+
+## Key Benefits
+
+<CardGroup cols={2}>
+  <Card title="Type Safety" icon="shield-check">
+    Pydantic validation ensures structured, reliable responses
+  </Card>
+  <Card title="Automatic Tracing" icon="chart-line">
+    Logfire integration provides zero-code instrumentation
+  </Card>
+  <Card title="Production Ready" icon="rocket">
+    Built for production-grade AI applications
+  </Card>
+  <Card title="Thread Support" icon="comments">
+    Track multi-turn conversations easily
+  </Card>
+</CardGroup>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Pydantic AI Documentation" href="https://ai.pydantic.dev/" icon="book">
+    Official Pydantic AI framework documentation
+  </Card>
+  <Card title="Logfire Documentation" href="https://docs.pydantic.dev/logfire/" icon="book">
+    Learn about Logfire observability
+  </Card>
+  <Card title="OpenTelemetry with Opik" href="/integrations/opentelemetry" icon="globe">
+    OpenTelemetry integration guide
+  </Card>
+</CardGroup>

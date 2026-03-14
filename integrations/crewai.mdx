@@ -1,0 +1,443 @@
+---
+title: "CrewAI Integration"
+description: "Monitor CrewAI agents, tasks, and crews with Opik"
+icon: "users"
+---
+
+The Opik CrewAI integration provides automatic tracing for CrewAI applications, capturing agent execution, task completion, and multi-agent workflows.
+
+## Installation
+
+Install Opik with CrewAI:
+
+```bash
+pip install opik crewai
+```
+
+## Quick Start
+
+Use `track_crewai()` to enable automatic tracing:
+
+```python
+from crewai import Agent, Task, Crew, Process
+from opik.integrations.crewai import track_crewai
+
+# Enable Opik tracking
+track_crewai(project_name="crewai-app")
+
+# Define agents
+researcher = Agent(
+    role="Researcher",
+    goal="Find accurate information",
+    backstory="You are an expert researcher.",
+    verbose=True
+)
+
+writer = Agent(
+    role="Writer",
+    goal="Write engaging content",
+    backstory="You are a skilled writer.",
+    verbose=True
+)
+
+# Define tasks
+research_task = Task(
+    description="Research the topic: {topic}",
+    expected_output="A summary of key findings",
+    agent=researcher
+)
+
+write_task = Task(
+    description="Write an article about {topic}",
+    expected_output="A well-written article",
+    agent=writer,
+    context=[research_task]
+)
+
+# Create crew
+crew = Crew(
+    agents=[researcher, writer],
+    tasks=[research_task, write_task],
+    process=Process.sequential,
+    verbose=True
+)
+
+# Run with automatic tracing
+result = crew.kickoff(inputs={"topic": "artificial intelligence"})
+print(result)
+```
+
+## Configuration Options
+
+<ParamField path="project_name" type="str" optional>
+  Name of the Opik project to log traces to
+</ParamField>
+
+<ParamField path="crew" type="Crew" optional>
+  The Crew instance to track. Required for CrewAI v1.0.0+ to properly track LLM calls made by agents
+</ParamField>
+
+## CrewAI v1.0.0+ Support
+
+For CrewAI v1.0.0 and above, pass the crew instance to `track_crewai()`:
+
+```python
+from crewai import Agent, Crew, Task
+from opik.integrations.crewai import track_crewai
+
+# Define agents and tasks
+agent = Agent(role="Assistant", goal="Help users", backstory="Helpful AI")
+task = Task(description="Answer: {question}", agent=agent, expected_output="An answer")
+
+# Create crew
+crew = Crew(agents=[agent], tasks=[task])
+
+# Track with crew instance (required for v1.0.0+)
+track_crewai(project_name="crew-v1", crew=crew)
+
+result = crew.kickoff(inputs={"question": "What is AI?"})
+```
+
+## What Gets Tracked
+
+The integration automatically captures:
+
+- **Crew Execution**: `kickoff()` and `kickoff_for_each()` operations
+- **Agent Execution**: Individual agent task execution
+- **Task Execution**: Task completion with inputs and outputs
+- **LLM Calls**: Language model requests from agents
+- **Token Usage**: Prompt and completion tokens for LLM calls
+- **Tool Usage**: Tool invocations by agents (when applicable)
+- **Flows**: CrewAI Flow execution (v1.0.0+)
+
+## Example: Sequential Crew
+
+```python
+from crewai import Agent, Task, Crew, Process
+from opik.integrations.crewai import track_crewai
+import opik
+
+track_crewai(project_name="sequential-crew")
+
+# Create specialized agents
+analyst = Agent(
+    role="Data Analyst",
+    goal="Analyze data and extract insights",
+    backstory="You are an experienced data analyst with expertise in pattern recognition.",
+    verbose=True,
+    llm="openai/gpt-4o-mini"
+)
+
+reporter = Agent(
+    role="Report Writer",
+    goal="Create clear, actionable reports",
+    backstory="You excel at transforming complex data into understandable reports.",
+    verbose=True,
+    llm="openai/gpt-4o-mini"
+)
+
+# Define tasks
+analysis_task = Task(
+    name="analyze_data",
+    description="Analyze the following dataset: {dataset}",
+    expected_output="Key insights and patterns found in the data",
+    agent=analyst
+)
+
+report_task = Task(
+    name="create_report",
+    description="Create a report summarizing the analysis",
+    expected_output="A comprehensive report",
+    agent=reporter,
+    context=[analysis_task]  # Uses output from analysis_task
+)
+
+# Create crew
+crew = Crew(
+    agents=[analyst, reporter],
+    tasks=[analysis_task, report_task],
+    process=Process.sequential,
+    verbose=True
+)
+
+track_crewai(crew=crew)  # For v1.0.0+
+
+result = crew.kickoff(inputs={"dataset": "Sales data for Q1 2024"})
+opik.flush_tracker()
+print(result)
+```
+
+## Example: Hierarchical Crew
+
+```python
+from crewai import Agent, Task, Crew, Process
+from opik.integrations.crewai import track_crewai
+
+track_crewai(project_name="hierarchical-crew")
+
+# Manager agent
+manager = Agent(
+    role="Project Manager",
+    goal="Coordinate team and ensure quality",
+    backstory="You manage teams effectively.",
+    llm="openai/gpt-4o"
+)
+
+# Worker agents
+researcher = Agent(
+    role="Researcher",
+    goal="Gather information",
+    backstory="You find relevant information.",
+    llm="openai/gpt-4o-mini"
+)
+
+reviewer = Agent(
+    role="Reviewer",
+    goal="Review and improve content",
+    backstory="You ensure quality and accuracy.",
+    llm="openai/gpt-4o-mini"
+)
+
+tasks = [
+    Task(
+        description="Research {topic}",
+        expected_output="Research findings",
+        agent=researcher
+    ),
+    Task(
+        description="Review the research",
+        expected_output="Reviewed content",
+        agent=reviewer
+    )
+]
+
+crew = Crew(
+    agents=[manager, researcher, reviewer],
+    tasks=tasks,
+    process=Process.hierarchical,  # Manager coordinates
+    manager_llm="openai/gpt-4o"
+)
+
+result = crew.kickoff(inputs={"topic": "quantum computing"})
+```
+
+## Example: Batch Processing
+
+```python
+from crewai import Agent, Task, Crew
+from opik.integrations.crewai import track_crewai
+import opik
+
+track_crewai(project_name="batch-processing")
+
+agent = Agent(
+    role="Classifier",
+    goal="Classify text into categories",
+    backstory="You are good at categorization.",
+    llm="openai/gpt-4o-mini"
+)
+
+task = Task(
+    description="Classify this text: {text}",
+    expected_output="Category name",
+    agent=agent
+)
+
+crew = Crew(agents=[agent], tasks=[task])
+track_crewai(crew=crew)
+
+# Process multiple inputs
+inputs = [
+    {"text": "Breaking news: Market hits all-time high"},
+    {"text": "New scientific discovery in medicine"},
+    {"text": "Sports team wins championship"}
+]
+
+results = crew.kickoff_for_each(inputs=inputs)
+opik.flush_tracker()
+
+for i, result in enumerate(results):
+    print(f"Input {i+1}: {result}")
+```
+
+## CrewAI Flows (v1.0.0+)
+
+Track CrewAI Flow execution:
+
+```python
+from crewai.flow.flow import Flow, listen, start
+from opik.integrations.crewai import track_crewai
+
+track_crewai(project_name="flow-tracking")
+
+class ResearchFlow(Flow):
+    @start()
+    def fetch_data(self):
+        return {"data": "research data"}
+    
+    @listen(fetch_data)
+    def analyze(self, data):
+        return {"analysis": f"Analyzed {data}"}
+    
+    @listen(analyze)
+    def report(self, analysis):
+        return f"Report: {analysis}"
+
+flow = ResearchFlow()
+result = flow.kickoff()
+print(result)
+```
+
+## Combining with @track Decorator
+
+```python
+import opik
+from crewai import Agent, Task, Crew
+from opik.integrations.crewai import track_crewai
+
+track_crewai(project_name="combined-tracking")
+
+@opik.track
+def run_analysis_crew(data: dict) -> str:
+    """Run a crew to analyze data."""
+    analyst = Agent(
+        role="Analyst",
+        goal="Analyze data",
+        backstory="Expert analyst",
+        llm="openai/gpt-4o-mini"
+    )
+    
+    task = Task(
+        description="Analyze: {data}",
+        expected_output="Analysis result",
+        agent=analyst
+    )
+    
+    crew = Crew(agents=[analyst], tasks=[task])
+    result = crew.kickoff(inputs={"data": str(data)})
+    return str(result)
+
+# Both the function and crew operations are traced
+result = run_analysis_crew({"metrics": [1, 2, 3]})
+opik.flush_tracker()
+```
+
+## Avoiding Duplicate LLM Tracking
+
+<Warning>
+  Do not use the OpenAI tracker alongside CrewAI tracking, as it will create duplicate logs for LLM calls.
+</Warning>
+
+```python
+# ❌ Don't do this
+from opik.integrations.crewai import track_crewai
+from opik.integrations.openai import track_openai
+
+track_openai()  # Don't use with CrewAI
+track_crewai()
+
+# ✅ Do this instead
+from opik.integrations.crewai import track_crewai
+
+track_crewai()  # LLM calls are tracked automatically
+```
+
+## Multi-Provider Support
+
+CrewAI tracking supports multiple LLM providers:
+
+```python
+from crewai import Agent, Task, Crew
+from opik.integrations.crewai import track_crewai
+
+track_crewai(project_name="multi-provider")
+
+# OpenAI agent
+openai_agent = Agent(
+    role="OpenAI Agent",
+    goal="Answer questions",
+    backstory="Powered by OpenAI",
+    llm="openai/gpt-4o-mini"
+)
+
+# Anthropic agent
+anthropic_agent = Agent(
+    role="Anthropic Agent",
+    goal="Answer questions",
+    backstory="Powered by Anthropic",
+    llm="anthropic/claude-sonnet-4-0"
+)
+
+# All providers are tracked with correct usage metrics
+tasks = [
+    Task(description="Task 1: {input}", agent=openai_agent, expected_output="Output 1"),
+    Task(description="Task 2: {input}", agent=anthropic_agent, expected_output="Output 2")
+]
+
+crew = Crew(agents=[openai_agent, anthropic_agent], tasks=tasks)
+result = crew.kickoff(inputs={"input": "test"})
+```
+
+Supported providers include:
+- OpenAI
+- Anthropic
+- Google Vertex AI
+- AWS Bedrock
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Track Early" icon="bolt">
+    Call `track_crewai()` before creating agents and crews to ensure all operations are traced.
+  </Card>
+  
+  <Card title="Pass Crew Instance" icon="users">
+    For CrewAI v1.0.0+, pass the crew instance to `track_crewai(crew=crew)` for complete LLM tracking.
+  </Card>
+  
+  <Card title="Use Project Names" icon="folder">
+    Organize different crews with descriptive project names for easy filtering.
+  </Card>
+  
+  <Card title="Flush on Exit" icon="database">
+    Call `opik.flush_tracker()` before script exit to ensure all traces are sent.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Traces not appearing">
+    Ensure that:
+    1. `track_crewai()` is called before crew execution
+    2. `opik.flush_tracker()` is called before program exit
+    3. Opik is configured (`opik configure`)
+  </Accordion>
+  
+  <Accordion title="Missing LLM call traces (v1.0.0+)">
+    For CrewAI v1.0.0+, you must pass the crew instance:
+    ```python
+    track_crewai(project_name="my-project", crew=crew)
+    ```
+  </Accordion>
+  
+  <Accordion title="Cyclic reference serialization errors">
+    This is handled automatically. Tasks with cyclic references (like `context=[task]`) are properly serialized.
+  </Accordion>
+  
+  <Accordion title="Duplicate LLM traces">
+    Don't use OpenAI tracker alongside CrewAI tracker. Remove:
+    ```python
+    # Remove this if using track_crewai()
+    from opik.integrations.openai import track_openai
+    track_openai()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Reference
+
+For more information:
+- [CrewAI Documentation](https://docs.crewai.com/)
+- [track_crewai API](/api-reference/integrations/crewai)
+- [Opik Tracing Guide](/tracing/overview)

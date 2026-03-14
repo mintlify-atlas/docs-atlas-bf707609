@@ -1,0 +1,295 @@
+---
+title: Guardrails AI
+description: Integrate Opik with Guardrails AI to track validation steps, monitor compliance, and evaluate guard performance.
+---
+
+[Guardrails AI](https://github.com/guardrails-ai/guardrails) is a framework for validating the inputs and outputs of LLM applications. It helps ensure that your AI applications produce safe, reliable, and compliant responses.
+
+## Overview
+
+Opik's integration with Guardrails AI provides:
+
+- **Validation tracking** for all guard checks
+- **Pass/fail monitoring** with detailed results
+- **Input and output validation** visibility
+- **LLM-based validator support** with cost tracking
+- **Compliance monitoring** for production systems
+
+## Installation
+
+```bash
+pip install opik guardrails-ai
+```
+
+## Configuration
+
+<Steps>
+  <Step title="Configure Opik">
+    Set up your Opik workspace:
+    
+    ```bash
+    opik configure
+    ```
+  </Step>
+  
+  <Step title="Set LLM Provider API Key">
+    If using LLM-based validators (like PolitenessCheck), configure your provider:
+    
+    ```bash
+    export OPENAI_API_KEY="your-api-key"
+    ```
+  </Step>
+  
+  <Step title="Install Guardrails Validators">
+    Install validators from Guardrails Hub:
+    
+    ```bash
+    guardrails hub install hub://guardrails/politeness_check
+    ```
+  </Step>
+</Steps>
+
+## Usage
+
+### Basic Validation Tracking
+
+Track Guard validation with `track_guardrails`:
+
+```python
+from guardrails import Guard, OnFailAction
+from guardrails.hub import PolitenessCheck
+from opik.integrations.guardrails import track_guardrails
+
+# Create a politeness validator
+politeness_check = PolitenessCheck(
+    llm_callable="gpt-3.5-turbo",
+    on_fail=OnFailAction.NOOP
+)
+
+# Create and track the guard
+guard: Guard = Guard()
+if hasattr(guard, "use_many"):
+    guard = guard.use_many(politeness_check)
+else:
+    guard = guard.use(politeness_check)
+
+guard = track_guardrails(guard, project_name="guardrails-demo")
+
+# Validate inputs - each validation is logged as a trace
+guard.validate("Would you be so kind to pass me a cup of tea?")
+guard.validate("Shut your mouth up and give me the tea.")
+```
+
+### Input Validation
+
+Validate user inputs before processing:
+
+```python
+from guardrails import Guard
+from guardrails.hub import ToxicLanguage
+from opik.integrations.guardrails import track_guardrails
+
+toxicity_check = ToxicLanguage(
+    threshold=0.5,
+    validation_method="sentence",
+    on_fail=OnFailAction.EXCEPTION
+)
+
+guard = Guard().use(toxicity_check)
+guard = track_guardrails(guard, project_name="input-validation")
+
+# This will be tracked with pass/fail status
+try:
+    result = guard.validate("This is a friendly message")
+    print("Input passed validation")
+except Exception as e:
+    print(f"Input failed validation: {e}")
+```
+
+### Output Validation
+
+Validate LLM outputs for quality and safety:
+
+```python
+from guardrails import Guard
+from guardrails.hub import RegexMatch
+from opik.integrations.guardrails import track_guardrails
+import openai
+
+# Create a guard to ensure email format
+email_guard = Guard().use(
+    RegexMatch(regex=r"^[a-zA-Z0-9+_.-]+@[a-zA-Z0-9.-]+$")
+)
+email_guard = track_guardrails(email_guard, project_name="output-validation")
+
+# Get LLM output
+client = openai.OpenAI()
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Extract the email: Contact us at hello@example.com"}]
+)
+
+# Validate the output
+output = response.choices[0].message.content
+result = email_guard.validate(output)
+```
+
+### Multiple Validators
+
+Use multiple validators on a single guard:
+
+```python
+from guardrails import Guard, OnFailAction
+from guardrails.hub import PolitenessCheck, ToxicLanguage, ProfanityFree
+from opik.integrations.guardrails import track_guardrails
+
+validators = [
+    PolitenessCheck(llm_callable="gpt-3.5-turbo", on_fail=OnFailAction.WARN),
+    ToxicLanguage(threshold=0.7, on_fail=OnFailAction.WARN),
+    ProfanityFree(on_fail=OnFailAction.EXCEPTION)
+]
+
+guard = Guard()
+for validator in validators:
+    guard = guard.use(validator)
+
+guard = track_guardrails(guard, project_name="multi-validator")
+
+# All validator results are tracked
+result = guard.validate("Your message here")
+```
+
+### Structured Output Validation
+
+Validate structured data with Pydantic models:
+
+```python
+from guardrails import Guard
+from pydantic import BaseModel, field_validator
+from opik.integrations.guardrails import track_guardrails
+
+class Person(BaseModel):
+    name: str
+    age: int
+    email: str
+    
+    @field_validator('age')
+    def age_must_be_positive(cls, v):
+        if v <= 0:
+            raise ValueError('Age must be positive')
+        return v
+
+guard = Guard.from_pydantic(Person)
+guard = track_guardrails(guard, project_name="structured-validation")
+
+# Validate structured output
+data = {
+    "name": "John Doe",
+    "age": 30,
+    "email": "john@example.com"
+}
+
+result = guard.validate(data)
+```
+
+### Custom Validators
+
+Track custom validator implementations:
+
+```python
+from guardrails import Guard, Validator, register_validator
+from opik.integrations.guardrails import track_guardrails
+
+@register_validator(name="custom_length_check", data_type="string")
+class CustomLengthCheck(Validator):
+    def __init__(self, min_length: int, max_length: int, on_fail=None):
+        super().__init__(on_fail=on_fail)
+        self.min_length = min_length
+        self.max_length = max_length
+    
+    def validate(self, value, metadata):
+        if not (self.min_length <= len(value) <= self.max_length):
+            return False
+        return True
+
+validator = CustomLengthCheck(min_length=10, max_length=100)
+guard = Guard().use(validator)
+guard = track_guardrails(guard, project_name="custom-validators")
+
+result = guard.validate("This is a test message")
+```
+
+## Viewing Validation Results
+
+Each validation is logged as a trace in Opik with:
+
+- **Validation status** (pass/fail)
+- **Input data** being validated
+- **Validator name** and configuration
+- **Failure reasons** when validation fails
+- **LLM costs** for LLM-based validators
+- **Execution time** for each validation
+
+## Integration with LLM Calls
+
+Combine Guardrails with Opik's OpenAI tracking:
+
+```python
+import opik
+from opik.integrations.openai import track_openai
+from opik.integrations.guardrails import track_guardrails
+from guardrails import Guard
+from guardrails.hub import ToxicLanguage
+import openai
+
+# Track OpenAI calls
+client = openai.OpenAI()
+client = track_openai(client, project_name="llm-with-guards")
+
+# Track guardrails
+input_guard = Guard().use(ToxicLanguage())
+input_guard = track_guardrails(input_guard, project_name="llm-with-guards")
+
+output_guard = Guard().use(ToxicLanguage())
+output_guard = track_guardrails(output_guard, project_name="llm-with-guards")
+
+@opik.track
+def safe_llm_call(user_input: str) -> str:
+    # Validate input
+    input_guard.validate(user_input)
+    
+    # Call LLM
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": user_input}]
+    )
+    
+    output = response.choices[0].message.content
+    
+    # Validate output
+    output_guard.validate(output)
+    
+    return output
+
+result = safe_llm_call("Tell me about AI safety")
+```
+
+## API Reference
+
+<Card title="track_guardrails" href="/sdk/python/overview">
+  Enable Opik tracking for Guardrails Guard instances
+</Card>
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="Guardrails AI Documentation" href="https://docs.guardrailsai.com/" icon="book">
+    Official Guardrails AI framework documentation
+  </Card>
+  <Card title="Guardrails Hub" href="https://hub.guardrailsai.com/" icon="store">
+    Browse and install validators from the Hub
+  </Card>
+  <Card title="Opik Tracing" href="/tracing/log-traces" icon="chart-line">
+    Learn more about Opik tracing capabilities
+  </Card>
+</CardGroup>

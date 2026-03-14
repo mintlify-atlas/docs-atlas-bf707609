@@ -1,0 +1,276 @@
+---
+title: "Tracing Overview"
+description: "Learn how to track and monitor your LLM applications with Opik's tracing capabilities"
+---
+
+Opik's tracing system allows you to capture, visualize, and analyze the execution of your LLM applications. Whether you're building a simple chatbot or a complex multi-agent system, tracing helps you understand what's happening under the hood.
+
+## What is Tracing?
+
+Tracing in Opik provides visibility into your LLM application by capturing:
+
+- **Traces**: The complete execution flow of a request through your application
+- **Spans**: Individual operations within a trace (LLM calls, tool executions, retrieval steps, etc.)
+- **Metadata**: Context, inputs, outputs, and performance metrics for each operation
+
+<Info>
+A trace represents the entire journey of a request, while spans represent the individual steps along that journey.
+</Info>
+
+## Core Concepts
+
+### Traces
+
+A trace captures the full execution path of a request through your application. Each trace has:
+
+- Unique identifier
+- Start and end timestamps
+- Input and output data
+- Metadata and tags
+- Error information (if any)
+- Feedback scores
+
+### Spans
+
+Spans represent individual operations within a trace. Each span has:
+
+- Parent-child relationships
+- Span type (`general`, `llm`, `tool`, `guardrail`)
+- Input/output data
+- Usage metrics (tokens, cost)
+- Model and provider information
+
+### Span Types
+
+<CodeGroup>
+```python General Span
+@track(type="general")
+def process_data(data):
+    return data.upper()
+```
+
+```python LLM Span
+@track(type="llm")
+def call_llm(prompt):
+    # LLM call
+    return response
+```
+
+```python Tool Span
+@track(type="tool")
+def search_database(query):
+    # Database search
+    return results
+```
+
+```python Guardrail Span
+@track(type="guardrail")
+def validate_output(text):
+    # Content validation
+    return is_safe
+```
+</CodeGroup>
+
+## How Tracing Works
+
+Opik provides multiple ways to instrument your code:
+
+### 1. Decorator-based Tracing
+
+The simplest way to add tracing is using the `@track` decorator:
+
+```python
+from opik import track
+
+@track
+def my_llm_function(prompt):
+    # Your LLM logic
+    return response
+```
+
+### 2. Context Manager Tracing
+
+For more control, use context managers:
+
+```python
+from opik import start_as_current_span, start_as_current_trace
+
+with start_as_current_trace(name="my-trace") as trace:
+    with start_as_current_span(name="step-1") as span:
+        # Your code
+        pass
+```
+
+### 3. Manual Tracing
+
+For complete control, create traces and spans manually:
+
+```python
+import opik
+
+client = opik.Opik()
+trace = client.trace(name="my-trace")
+span = trace.span(name="my-span")
+span.end()
+trace.end()
+```
+
+### 4. Integration-based Tracing
+
+Opik automatically traces calls when using supported integrations:
+
+```python
+import opik
+from openai import OpenAI
+
+# Automatically tracked
+client = opik.integrations.openai(OpenAI())
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+## Trace Hierarchy
+
+Traces and spans form a hierarchical structure:
+
+```
+Trace: Customer Support Request
+├── Span: Intent Classification (LLM)
+├── Span: Retrieve Context (Tool)
+│   ├── Span: Database Query
+│   └── Span: Rerank Results
+├── Span: Generate Response (LLM)
+└── Span: Content Filter (Guardrail)
+```
+
+Nested `@track` decorators automatically create this hierarchy:
+
+```python
+@track
+def support_pipeline(question):
+    intent = classify_intent(question)
+    context = retrieve_context(question)
+    response = generate_response(question, context)
+    return filter_content(response)
+
+@track(type="llm")
+def classify_intent(question):
+    # Classification logic
+    pass
+
+@track(type="tool")
+def retrieve_context(question):
+    # Retrieval logic
+    pass
+
+@track(type="llm")
+def generate_response(question, context):
+    # Generation logic
+    pass
+
+@track(type="guardrail")
+def filter_content(text):
+    # Filtering logic
+    pass
+```
+
+## What Gets Tracked?
+
+By default, Opik captures:
+
+<CardGroup cols={2}>
+  <Card title="Execution Data" icon="code">
+    - Function inputs and outputs
+    - Start and end timestamps
+    - Execution duration
+    - Error information
+  </Card>
+  
+  <Card title="LLM Metrics" icon="chart-line">
+    - Token usage (prompt, completion, total)
+    - Model name and provider
+    - Cost calculations
+    - Custom metadata
+  </Card>
+  
+  <Card title="Context" icon="tags">
+    - Custom tags
+    - Metadata fields
+    - Project organization
+    - Thread grouping
+  </Card>
+  
+  <Card title="Quality Metrics" icon="star">
+    - Feedback scores
+    - Human annotations
+    - Automated evaluations
+    - Score reasoning
+  </Card>
+</CardGroup>
+
+## Controlling What Gets Tracked
+
+You can control what data is captured:
+
+```python
+@track(
+    name="custom-name",              # Custom span name
+    capture_input=True,              # Capture inputs (default: True)
+    capture_output=True,             # Capture outputs (default: True)
+    ignore_arguments=["api_key"],   # Exclude specific arguments
+    tags=["production", "v2"],      # Add tags
+    metadata={"version": "1.0"},    # Add metadata
+    project_name="my-project"        # Specify project
+)
+def my_function(prompt, api_key):
+    return response
+```
+
+## Distributed Tracing
+
+Opik supports distributed tracing across services and processes:
+
+```python
+from opik import track, opik_context
+import requests
+
+@track
+def local_service(query):
+    # Get headers for distributed tracing
+    headers = opik_context.get_distributed_trace_headers()
+    
+    # Pass to remote service
+    response = requests.post(
+        "http://remote-service/api",
+        json={"query": query},
+        headers=headers
+    )
+    return response.json()
+
+@track
+def remote_service(query, opik_distributed_trace_headers=None):
+    # Automatically connected to parent trace
+    return process_query(query)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Log Traces" icon="file-lines" href="/tracing/log-traces">
+    Learn how to create and log traces
+  </Card>
+  
+  <Card title="Track Decorator" icon="at" href="/tracing/track-decorator">
+    Master the @track decorator
+  </Card>
+  
+  <Card title="Integrations" icon="plug" href="/tracing/integrations">
+    Use automatic tracing with integrations
+  </Card>
+  
+  <Card title="Annotate Traces" icon="pen" href="/tracing/annotate-traces">
+    Add feedback scores and annotations
+  </Card>
+</CardGroup>

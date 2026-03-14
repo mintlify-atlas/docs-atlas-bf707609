@@ -1,0 +1,245 @@
+---
+title: "Python SDK Overview"
+description: "Learn about the Opik Python SDK for LLM application development, tracing, and evaluation"
+---
+
+The Opik Python SDK provides a comprehensive toolkit for building, evaluating, and monitoring LLM applications. It enables you to trace function calls, evaluate model outputs, manage datasets, and run experiments.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Automatic Tracing" icon="route">
+    Track LLM calls and function execution with the `@track` decorator
+  </Card>
+  <Card title="Evaluation Framework" icon="chart-line">
+    Evaluate model outputs with built-in and custom metrics
+  </Card>
+  <Card title="Dataset Management" icon="database">
+    Create, version, and manage evaluation datasets
+  </Card>
+  <Card title="Experiment Tracking" icon="flask">
+    Run and compare experiments across different model configurations
+  </Card>
+</CardGroup>
+
+## Installation
+
+Install the Opik Python SDK using pip or uv:
+
+<CodeGroup>
+```bash pip
+pip install opik
+```
+
+```bash uv
+uv pip install opik
+```
+</CodeGroup>
+
+## Requirements
+
+The Opik Python SDK requires:
+- Python 3.10 or higher
+- An Opik server instance (cloud or self-hosted)
+
+## Quick Start
+
+Here's a simple example to get started with Opik:
+
+```python
+import opik
+
+# Configure Opik
+opik.configure(
+    api_key="YOUR_API_KEY",
+    workspace="YOUR_WORKSPACE"
+)
+
+# Track a function
+@opik.track
+def my_llm_function(user_question: str) -> str:
+    # Your LLM logic here
+    return f"Answer to: {user_question}"
+
+# Call the function - it will be automatically traced
+result = my_llm_function("What is Opik?")
+
+# Flush to ensure all data is sent
+opik.flush_tracker()
+```
+
+## Core Components
+
+### Opik Client
+
+The `Opik` class is the main interface for interacting with the Opik platform:
+
+```python
+from opik import Opik
+
+client = Opik(
+    project_name="my-project",
+    workspace="my-workspace"
+)
+```
+
+See the [Client reference](/sdk/python/client) for detailed documentation.
+
+### Tracing
+
+Use the `@track` decorator to automatically log traces and spans:
+
+```python
+import opik
+
+@opik.track
+def process_query(query: str) -> dict:
+    # Your processing logic
+    return {"result": "processed"}
+```
+
+See the [Tracing guide](/sdk/python/tracing) for more details.
+
+### Evaluation
+
+Evaluate your LLM applications with datasets and metrics:
+
+```python
+from opik import evaluate
+from opik.evaluation.metrics import Hallucination
+
+results = evaluate(
+    dataset=dataset,
+    task=my_llm_function,
+    scoring_metrics=[Hallucination()],
+    experiment_name="my-experiment"
+)
+```
+
+See the [Evaluation guide](/sdk/python/evaluation) for comprehensive examples.
+
+### Datasets
+
+Create and manage datasets for evaluation:
+
+```python
+client = Opik()
+dataset = client.create_dataset(name="my-dataset")
+
+dataset.insert([
+    {"input": {"question": "What is AI?"}, "expected_output": "..."}
+])
+```
+
+See the [Datasets guide](/sdk/python/datasets) for more information.
+
+### Experiments
+
+Run experiments to compare different approaches:
+
+```python
+from opik import evaluate
+
+results = evaluate(
+    experiment_name="gpt-4-test",
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metric1, metric2]
+)
+```
+
+See the [Experiments guide](/sdk/python/experiments) for detailed examples.
+
+## Integration Support
+
+Opik integrates seamlessly with popular LLM frameworks:
+
+- **OpenAI**: Automatic tracing with `track_openai()`
+- **LangChain**: Native integration for chains and agents
+- **LiteLLM**: Multi-provider LLM calls
+- **AWS Bedrock**: Amazon Bedrock integration
+- **And more**: Check our integrations documentation
+
+## Dynamic Tracing Control
+
+Control tracing behavior at runtime:
+
+```python
+import opik
+
+# Disable tracing globally
+opik.set_tracing_active(False)
+
+# Check current state
+print(opik.is_tracing_active())  # False
+
+# Re-enable tracing
+opik.set_tracing_active(True)
+
+# Reset to default
+opik.reset_tracing_to_config_default()
+```
+
+This is useful for:
+- Performance optimization in high-throughput systems
+- Conditional tracing based on user type or request parameters
+- Debugging without redeployment
+- Implementing sampling strategies
+
+## API Reference Structure
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/sdk/python/installation">
+    Installation and setup instructions
+  </Card>
+  <Card title="Configuration" icon="gear" href="/sdk/python/configuration">
+    Configure the SDK for your environment
+  </Card>
+  <Card title="Client" icon="code" href="/sdk/python/client">
+    Opik client API reference
+  </Card>
+  <Card title="Tracing" icon="route" href="/sdk/python/tracing">
+    Automatic and manual tracing
+  </Card>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/python/evaluation">
+    Evaluate LLM outputs
+  </Card>
+  <Card title="Datasets" icon="database" href="/sdk/python/datasets">
+    Dataset management
+  </Card>
+  <Card title="Experiments" icon="flask" href="/sdk/python/experiments">
+    Experiment tracking and comparison
+  </Card>
+</CardGroup>
+
+## Python Version Support
+
+Opik supports Python 3.10 and higher, including:
+- Python 3.10
+- Python 3.11
+- Python 3.12
+- Python 3.13
+- Python 3.14
+
+## Next Steps
+
+<Steps>
+  <Step title="Install the SDK">
+    Follow the [installation guide](/sdk/python/installation) to set up the Opik Python SDK
+  </Step>
+  <Step title="Configure Opik">
+    Set up your [configuration](/sdk/python/configuration) for cloud or self-hosted deployments
+  </Step>
+  <Step title="Start Tracing">
+    Add the `@track` decorator to your functions and start [tracing](/sdk/python/tracing)
+  </Step>
+  <Step title="Evaluate Your Model">
+    Create datasets and run [evaluations](/sdk/python/evaluation) to measure performance
+  </Step>
+</Steps>
+
+## Additional Resources
+
+- [GitHub Repository](https://github.com/comet-ml/opik)
+- [Example Notebooks](https://github.com/comet-ml/opik/tree/main/apps/opik-documentation/documentation/docs/cookbook)
+- [Community Discord](https://discord.gg/opik)

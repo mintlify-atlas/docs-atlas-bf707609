@@ -1,0 +1,272 @@
+---
+title: "LangChain Integration"
+description: "Track and monitor your LangChain applications with Opik"
+icon: "link"
+---
+
+The Opik LangChain integration enables automatic tracing of your LangChain applications, capturing chains, LLM calls, and tool usage with detailed metrics.
+
+## Installation
+
+Install Opik with LangChain support:
+
+```bash
+pip install opik langchain langchain-core
+```
+
+## Quick Start
+
+Use the `OpikTracer` as a callback to automatically trace LangChain operations:
+
+```python
+from langchain_core.prompts import PromptTemplate
+from langchain_openai import OpenAI
+from opik.integrations.langchain import OpikTracer
+
+# Initialize the Opik tracer
+opik_tracer = OpikTracer(
+    tags=["langchain", "example"],
+    metadata={"environment": "production"}
+)
+
+# Create your LangChain components
+llm = OpenAI(temperature=0.7)
+template = "Given the title of play, write a synopsis for that. Title: {title}."
+prompt = PromptTemplate(input_variables=["title"], template=template)
+
+# Create and invoke chain with Opik tracing
+chain = prompt | llm
+result = chain.invoke(
+    input={"title": "Hamlet"},
+    config={"callbacks": [opik_tracer]}
+)
+
+# Flush to ensure all traces are sent
+opik_tracer.flush()
+```
+
+## Configuration Options
+
+<ParamField path="tags" type="List[str]" optional>
+  List of tags to associate with all logged traces
+</ParamField>
+
+<ParamField path="metadata" type="Dict[str, Any]" optional>
+  Dictionary containing metadata information for logged traces
+</ParamField>
+
+<ParamField path="project_name" type="str" optional>
+  Name of the Opik project to log traces to. Defaults to the configured project
+</ParamField>
+
+<ParamField path="distributed_headers" type="DistributedTraceHeadersDict" optional>
+  Headers for distributed tracing to link traces across services
+</ParamField>
+
+<ParamField path="thread_id" type="str" optional>
+  Unique identifier for conversational threads to group related traces
+</ParamField>
+
+<ParamField path="skip_error_callback" type="Callable[[str], bool]" optional>
+  Callback function to determine if specific errors should be skipped during tracing
+</ParamField>
+
+## LangGraph Support
+
+For LangGraph applications, use the dedicated `track_langgraph` function:
+
+```python
+from langgraph.graph import StateGraph, START, END
+from opik.integrations.langchain import track_langgraph
+
+# Define your graph
+workflow = StateGraph(State)
+workflow.add_node("agent", call_agent)
+workflow.add_node("tools", tool_node)
+workflow.add_edge(START, "agent")
+workflow.add_conditional_edges("agent", should_continue)
+workflow.add_edge("tools", "agent")
+workflow.add_edge("agent", END)
+
+graph = workflow.compile()
+
+# Track the graph with Opik
+track_langgraph(graph, project_name="langgraph-app")
+
+# Run your graph - it will be automatically traced
+result = graph.invoke({"messages": ["What's the weather?"]})
+```
+
+## Distributed Tracing
+
+Link traces across services using distributed headers:
+
+```python
+from opik.integrations.langchain import OpikTracer
+from opik.types import DistributedTraceHeadersDict
+
+# Service A: Create distributed headers
+tracer_a = OpikTracer(project_name="service-a")
+chain_a.invoke({"input": "query"}, config={"callbacks": [tracer_a]})
+
+# Get the trace headers to pass to service B
+distributed_headers = DistributedTraceHeadersDict(
+    opik_trace_id=tracer_a.created_traces()[0].id,
+    opik_parent_span_id=None
+)
+
+# Service B: Continue the trace
+tracer_b = OpikTracer(
+    project_name="service-b",
+    distributed_headers=distributed_headers
+)
+chain_b.invoke({"input": "query"}, config={"callbacks": [tracer_b]})
+```
+
+## Combining with @track Decorator
+
+Combine OpikTracer with the `@track` decorator for custom functions:
+
+```python
+import opik
+from opik.integrations.langchain import OpikTracer
+
+@opik.track
+def process_with_langchain(query: str) -> dict:
+    tracer = OpikTracer()
+    result = chain.invoke(
+        {"query": query},
+        config={"callbacks": [tracer]}
+    )
+    return {"result": result}
+
+# The function and LangChain chain will both be traced
+process_with_langchain("What is AI?")
+```
+
+## What Gets Tracked
+
+The OpikTracer automatically captures:
+
+- **Chains**: Full chain execution with inputs and outputs
+- **LLM Calls**: Model requests, responses, and token usage
+- **Tools**: Tool invocations and results
+- **Prompts**: Prompt templates and formatted prompts
+- **Metadata**: Provider information and execution context
+- **Errors**: Exception details when operations fail
+
+## Token Usage and Costs
+
+Token usage is automatically extracted for supported providers:
+
+- OpenAI
+- Anthropic
+- Google Vertex AI
+- AWS Bedrock
+- Groq
+
+Usage information appears in the Opik dashboard for each LLM span.
+
+## Error Handling
+
+Handle and filter errors during tracing:
+
+```python
+def should_skip_error(error_message: str) -> bool:
+    # Skip rate limit errors
+    return "rate_limit" in error_message.lower()
+
+tracer = OpikTracer(skip_error_callback=should_skip_error)
+```
+
+<Note>
+  When errors are skipped, the output will be set to `ERROR_SKIPPED_OUTPUTS`. You can manually update the output using `opik_context.get_current_span_data().update(output=...)`.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Always Flush" icon="database">
+    Call `tracer.flush()` at the end of your script to ensure all traces are sent to Opik.
+  </Card>
+  
+  <Card title="Use Project Names" icon="folder">
+    Organize traces by setting meaningful `project_name` values for different applications.
+  </Card>
+  
+  <Card title="Add Metadata" icon="tags">
+    Include environment, version, or user information in metadata for better filtering.
+  </Card>
+  
+  <Card title="Tag Strategically" icon="bookmark">
+    Use tags to categorize traces by feature, stage, or experiment.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Traces not appearing in Opik">
+    Make sure to call `tracer.flush()` before your script exits. Without flushing, traces may not be sent to the backend.
+  </Accordion>
+  
+  <Accordion title="Missing token usage information">
+    Token usage extraction is provider-specific. Ensure you're using a supported LLM provider (OpenAI, Anthropic, Vertex AI, Bedrock, or Groq).
+  </Accordion>
+  
+  <Accordion title="Duplicate LLM calls logged">
+    If you're using both OpikTracer and a provider-specific tracker (like OpenAI tracker), you may see duplicate traces. Use only one tracking method.
+  </Accordion>
+</AccordionGroup>
+
+## Example: Complete RAG Application
+
+```python
+from langchain_openai import OpenAI, OpenAIEmbeddings
+from langchain_community.vectorstores import FAISS
+from langchain.chains import RetrievalQA
+from langchain.text_splitter import CharacterTextSplitter
+from opik.integrations.langchain import OpikTracer
+
+# Prepare documents
+texts = [
+    "LangChain is a framework for developing applications powered by language models.",
+    "Opik is an open-source platform for evaluating and monitoring LLM applications."
+]
+
+text_splitter = CharacterTextSplitter(chunk_size=100, chunk_overlap=0)
+docs = text_splitter.create_documents(texts)
+
+# Create vector store
+embeddings = OpenAIEmbeddings()
+vectorstore = FAISS.from_documents(docs, embeddings)
+
+# Create QA chain
+qa_chain = RetrievalQA.from_chain_type(
+    llm=OpenAI(),
+    chain_type="stuff",
+    retriever=vectorstore.as_retriever()
+)
+
+# Run with Opik tracing
+tracer = OpikTracer(
+    project_name="rag-app",
+    tags=["rag", "qa"],
+    metadata={"version": "1.0"}
+)
+
+result = qa_chain.invoke(
+    {"query": "What is Opik?"},
+    config={"callbacks": [tracer]}
+)
+
+tracer.flush()
+print(result)
+```
+
+## Reference
+
+For more details, see:
+- [LangChain Documentation](https://python.langchain.com/)
+- [OpikTracer API Reference](/api-reference/integrations/langchain)
+- [Tracing Guide](/tracing/overview)

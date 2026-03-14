@@ -1,0 +1,438 @@
+---
+title: "Agent Optimizer"
+description: "Automatically optimize prompts and model parameters using the opik_optimizer SDK"
+---
+
+The Opik Agent Optimizer (`opik_optimizer`) is a powerful SDK that automatically refines your prompts and model parameters to achieve better performance from your Large Language Models (LLMs).
+
+## Overview
+
+The optimizer uses advanced algorithms to iteratively improve your prompts based on evaluation metrics. All optimizers follow a standardized API, making it easy to switch between algorithms or chain them together.
+
+## Installation
+
+```bash
+# Using pip
+pip install opik-optimizer
+
+# Using uv (faster)
+uv pip install opik-optimizer
+```
+
+<Note>
+The `opik-optimizer` package is separate from the main `opik` SDK and can be installed independently.
+</Note>
+
+## Quick Start
+
+Here's a basic example of optimizing a prompt:
+
+```python
+from opik_optimizer import MetaPromptOptimizer
+from opik_optimizer.api_objects import ChatPrompt
+from opik import Opik, Dataset
+from opik.evaluation.metrics import Equals
+
+# Create a dataset
+client = Opik()
+dataset = client.get_or_create_dataset("translation-task")
+dataset.insert([
+    {"question": "Hello", "expected_output": "Bonjour"},
+    {"question": "Goodbye", "expected_output": "Au revoir"},
+])
+
+# Define initial prompt
+initial_prompt = ChatPrompt(
+    name="translator",
+    system="You are a translator.",
+    user="Translate to French: {{question}}"
+)
+
+# Create optimizer
+optimizer = MetaPromptOptimizer(
+    model="gpt-4o-mini",
+    verbose=1
+)
+
+# Optimize the prompt
+result = optimizer.optimize_prompt(
+    prompt=initial_prompt,
+    dataset=dataset,
+    metric=Equals()
+)
+
+# Use the best prompt
+print(f"Best score: {result.best_score}")
+print(f"Best prompt: {result.best_prompt.user}")
+```
+
+## Available Optimizers
+
+All optimizers follow the same standardized API:
+
+<Tabs>
+  <Tab title="MetaPromptOptimizer">
+    Uses meta-prompting techniques for optimization.
+    
+    ```python
+    from opik_optimizer import MetaPromptOptimizer
+    
+    optimizer = MetaPromptOptimizer(
+        model="gpt-4o-mini",
+        verbose=1,
+        seed=42
+    )
+    ```
+    
+    **Best for:** General-purpose prompt optimization with strong performance
+  </Tab>
+  
+  <Tab title="EvolutionaryOptimizer">
+    Uses genetic algorithms for prompt evolution.
+    
+    ```python
+    from opik_optimizer import EvolutionaryOptimizer
+    
+    optimizer = EvolutionaryOptimizer(
+        model="gpt-4o-mini",
+        verbose=1,
+        seed=42
+    )
+    ```
+    
+    **Best for:** Exploring diverse prompt variations
+  </Tab>
+  
+  <Tab title="FewShotBayesianOptimizer">
+    Uses few-shot learning with Bayesian optimization.
+    
+    ```python
+    from opik_optimizer import FewShotBayesianOptimizer
+    
+    optimizer = FewShotBayesianOptimizer(
+        model="gpt-4o-mini",
+        verbose=1,
+        seed=42
+    )
+    ```
+    
+    **Best for:** Optimizing few-shot examples and demonstrations
+  </Tab>
+  
+  <Tab title="GepaOptimizer">
+    Leverages GEPA (Genetic-Pareto) optimization approach.
+    
+    ```python
+    from opik_optimizer import GepaOptimizer
+    
+    optimizer = GepaOptimizer(
+        model="gpt-4o-mini",
+        verbose=1,
+        seed=42
+    )
+    ```
+    
+    **Best for:** Multi-objective optimization scenarios
+  </Tab>
+  
+  <Tab title="HRPO">
+    Hierarchical Reflective Prompt Optimizer for advanced refinement.
+    
+    ```python
+    from opik_optimizer import HRPO
+    
+    optimizer = HRPO(
+        model="gpt-4o-mini",
+        verbose=1,
+        seed=42
+    )
+    ```
+    
+    **Best for:** Complex prompts requiring hierarchical reasoning
+  </Tab>
+  
+  <Tab title="ParameterOptimizer">
+    Optimizes LLM call parameters (temperature, top_p, etc.).
+    
+    ```python
+    from opik_optimizer import ParameterOptimizer, ParameterSearchSpace, ParameterSpec, ParameterType
+    
+    search_space = ParameterSearchSpace(
+        temperature=ParameterSpec(type=ParameterType.FLOAT, min=0.0, max=1.0),
+        top_p=ParameterSpec(type=ParameterType.FLOAT, min=0.0, max=1.0)
+    )
+    
+    optimizer = ParameterOptimizer(
+        model="gpt-4o-mini",
+        search_space=search_space,
+        verbose=1
+    )
+    ```
+    
+    **Best for:** Fine-tuning model generation parameters
+  </Tab>
+</Tabs>
+
+## ChatPrompt API
+
+The `ChatPrompt` class is the core object for optimization:
+
+```python
+from opik_optimizer.api_objects import ChatPrompt
+
+# System + User format
+prompt = ChatPrompt(
+    name="my-prompt",
+    system="You are a helpful assistant.",
+    user="Answer this question: {{question}}"
+)
+
+# Messages format
+prompt = ChatPrompt(
+    name="my-prompt",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "Answer: {{question}}"}
+    ]
+)
+
+# With model configuration
+prompt = ChatPrompt(
+    name="my-prompt",
+    system="You are a helpful assistant.",
+    user="{{question}}",
+    model="gpt-4",
+    model_parameters={"temperature": 0.7, "max_tokens": 500}
+)
+```
+
+<Warning>
+At least one of `system`, `user`, or `messages` must be provided. You cannot provide both `user` and `messages` together, or both `system` and `messages` together.
+</Warning>
+
+## Optimization Configuration
+
+Customize the optimization process with various parameters:
+
+```python
+result = optimizer.optimize_prompt(
+    prompt=initial_prompt,
+    dataset=dataset,
+    metric=metric,
+    experiment_config={
+        "n_trials": 5,  # Number of optimization rounds
+        "project_name": "my-project",
+        "experiment_name": "prompt-opt-v1"
+    },
+    n_samples=10,  # Number of dataset samples to use
+    auto_continue=False,  # Auto-continue from previous runs
+)
+```
+
+### Common Parameters
+
+<ParamField path="model" type="string" required>
+  LiteLLM model name for the optimizer's internal reasoning/generation calls (e.g., `gpt-4o-mini`, `claude-3-haiku-20240307`)
+</ParamField>
+
+<ParamField path="verbose" type="int" default="1">
+  Controls internal logging and progress bars (0=off, 1=on)
+</ParamField>
+
+<ParamField path="seed" type="int" default="42">
+  Random seed for reproducibility
+</ParamField>
+
+<ParamField path="model_parameters" type="dict" default="None">
+  Optional dict of LiteLLM parameters for the optimizer's internal LLM calls (temperature, max_tokens, top_p, etc.)
+</ParamField>
+
+<ParamField path="skip_perfect_score" type="bool" default="True">
+  Stop optimization early if a perfect score is achieved
+</ParamField>
+
+<ParamField path="perfect_score" type="float" default="0.95">
+  Score threshold to consider as "perfect"
+</ParamField>
+
+## Optimization Results
+
+The `OptimizationResult` object contains detailed information about the optimization:
+
+```python
+result = optimizer.optimize_prompt(
+    prompt=initial_prompt,
+    dataset=dataset,
+    metric=metric
+)
+
+# Access best results
+print(f"Best score: {result.best_score}")
+print(f"Best prompt: {result.best_prompt}")
+
+# View optimization history
+for round in result.history:
+    print(f"Round {round.round_number}:")
+    print(f"  Score: {round.score}")
+    print(f"  Prompt: {round.candidate_prompt}")
+
+# Access metadata
+print(f"Total trials: {result.metadata['n_trials']}")
+print(f"LLM calls: {result.metadata['llm_call_count']}")
+```
+
+## Chaining Optimizers
+
+Combine multiple optimizers for better results:
+
+```python
+from opik_optimizer import MetaPromptOptimizer, EvolutionaryOptimizer
+
+# First pass: MetaPromptOptimizer
+optimizer1 = MetaPromptOptimizer(model="gpt-4o-mini")
+result1 = optimizer1.optimize_prompt(
+    prompt=initial_prompt,
+    dataset=dataset,
+    metric=metric
+)
+
+# Second pass: EvolutionaryOptimizer on best result
+optimizer2 = EvolutionaryOptimizer(model="gpt-4o-mini")
+result2 = optimizer2.optimize_prompt(
+    prompt=result1.best_prompt,  # Use best from first pass
+    dataset=dataset,
+    metric=metric
+)
+
+print(f"Initial score: {result1.history[0].score}")
+print(f"After MetaPrompt: {result1.best_score}")
+print(f"After Evolutionary: {result2.best_score}")
+```
+
+## Tool Calling Support
+
+Optimize prompts that use function calling:
+
+```python
+# Define tools
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_weather",
+            "description": "Get the current weather",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "location": {"type": "string", "description": "The city"}
+                }
+            }
+        }
+    }
+]
+
+# Define function implementations
+def get_weather(location: str) -> str:
+    return f"Weather in {location}: Sunny, 72°F"
+
+function_map = {"get_weather": get_weather}
+
+# Create prompt with tools
+prompt = ChatPrompt(
+    name="weather-assistant",
+    system="You are a weather assistant.",
+    user="{{user_request}}",
+    tools=tools,
+    function_map=function_map
+)
+
+# Optimize
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric
+)
+```
+
+<Info>
+Not all optimizers support tool optimization. Check the optimizer's `supports_tool_optimization` attribute.
+</Info>
+
+## Multimodal Optimization
+
+Optimize prompts with multimodal content:
+
+```python
+prompt = ChatPrompt(
+    name="vision-prompt",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "Describe this image: {{description_request}}"},
+                {"type": "image_url", "image_url": {"url": "{{image_url}}"}}
+            ]
+        }
+    ],
+    model="gpt-4-vision-preview"
+)
+
+# Optimize with multimodal-capable optimizer
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric
+)
+```
+
+<Note>
+Check the optimizer's `supports_multimodal` attribute to verify multimodal support.
+</Note>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Start Simple" icon="seedling">
+    Begin with a basic prompt and let the optimizer improve it iteratively
+  </Card>
+  
+  <Card title="Use Representative Data" icon="database">
+    Ensure your dataset covers the full range of use cases
+  </Card>
+  
+  <Card title="Choose the Right Metric" icon="bullseye">
+    Select evaluation metrics that align with your actual goals
+  </Card>
+  
+  <Card title="Set Reasonable Limits" icon="gauge">
+    Use `n_trials` and `n_samples` to balance quality and cost
+  </Card>
+  
+  <Card title="Track Experiments" icon="chart-line">
+    Use descriptive experiment names to track optimization history
+  </Card>
+  
+  <Card title="Validate Results" icon="clipboard-check">
+    Always test optimized prompts on held-out data
+  </Card>
+</CardGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prompt Management" icon="folder" href="/advanced/prompt-management">
+    Organize and version your optimized prompts
+  </Card>
+  
+  <Card title="Evaluation Metrics" icon="chart-bar" href="/evaluation/metrics">
+    Learn about available evaluation metrics
+  </Card>
+  
+  <Card title="Datasets" icon="table" href="/evaluation/datasets">
+    Create effective evaluation datasets
+  </Card>
+  
+  <Card title="Playground" icon="flask" href="/advanced/prompt-playground">
+    Test your optimized prompts interactively
+  </Card>
+</CardGroup>

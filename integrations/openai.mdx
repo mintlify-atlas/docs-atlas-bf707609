@@ -1,0 +1,404 @@
+---
+title: OpenAI Integration
+description: Track and monitor OpenAI API calls with Opik
+---
+
+Opik provides native integration with OpenAI, allowing you to automatically trace and monitor all your OpenAI API calls including chat completions, structured outputs, streaming responses, audio generation, and video generation.
+
+## Installation
+
+First, ensure you have both Opik and OpenAI installed:
+
+```bash
+pip install opik openai
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure Opik">
+    Initialize Opik in your application:
+
+    ```python
+    import opik
+
+    opik.configure()
+    ```
+  </Step>
+
+  <Step title="Track your OpenAI client">
+    Wrap your OpenAI client with Opik tracking:
+
+    ```python
+    from openai import OpenAI
+    from opik.integrations.openai import track_openai
+
+    client = OpenAI()
+    client = track_openai(client)
+    ```
+  </Step>
+
+  <Step title="Use OpenAI as normal">
+    All your OpenAI calls will now be automatically tracked:
+
+    ```python
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Tell me a fact about AI"}
+        ],
+        max_tokens=100
+    )
+    ```
+  </Step>
+</Steps>
+
+## Supported Features
+
+The Opik OpenAI integration tracks calls to:
+
+- `client.chat.completions.create()` - Standard chat completions (including streaming)
+- `client.beta.chat.completions.parse()` - Structured outputs with Pydantic models
+- `client.beta.chat.completions.stream()` - Streaming with beta API
+- `client.responses.create()` - Responses API
+- `client.audio.speech.create()` - Text-to-speech generation
+- `client.videos.create()` - Video generation and management
+
+## Usage Examples
+
+### Basic Chat Completion
+
+```python
+from openai import OpenAI
+from opik import track
+from opik.integrations.openai import track_openai
+
+client = OpenAI()
+client = track_openai(client)
+
+@track()
+def ask_question(question: str):
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": question}
+        ],
+        max_tokens=100
+    )
+    return response.choices[0].message.content
+
+result = ask_question("What is machine learning?")
+print(result)
+```
+
+### Streaming Responses
+
+The integration automatically handles streaming responses:
+
+```python
+from openai import OpenAI
+from opik import track, flush_tracker
+from opik.integrations.openai import track_openai
+
+client = OpenAI()
+client = track_openai(client)
+
+@track()
+def stream_response():
+    stream = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": "Tell me a fact"}
+        ],
+        max_tokens=50,
+        stream=True,
+        stream_options={"include_usage": True}
+    )
+    
+    for chunk in stream:
+        if chunk.choices[0].delta.content:
+            print(chunk.choices[0].delta.content, end="")
+    print()
+
+stream_response()
+flush_tracker()
+```
+
+<Note>
+When streaming, the span is automatically updated once the stream is fully consumed. Make sure to iterate through all chunks for complete tracking.
+</Note>
+
+### Structured Outputs
+
+Track structured outputs using Pydantic models:
+
+```python
+from openai import OpenAI
+from opik import track, flush_tracker
+from opik.integrations.openai import track_openai
+from pydantic import BaseModel
+
+client = OpenAI()
+client = track_openai(client)
+
+class CalendarEvent(BaseModel):
+    name: str
+    date: str
+    participants: list[str]
+
+@track()
+def extract_event():
+    completion = client.beta.chat.completions.parse(
+        model="gpt-4o-2024-08-06",
+        messages=[
+            {"role": "system", "content": "Extract the event information."},
+            {
+                "role": "user",
+                "content": "Alice and Bob are going to a science fair on Friday."
+            }
+        ],
+        response_format=CalendarEvent
+    )
+    return completion.choices[0].message.parsed
+
+event = extract_event()
+print(f"Event: {event.name} on {event.date}")
+flush_tracker()
+```
+
+### Nested Tracking
+
+Combine OpenAI calls with custom tracked functions:
+
+```python
+from openai import OpenAI
+from opik import track, flush_tracker
+from opik.integrations.openai import track_openai
+
+client = OpenAI()
+client = track_openai(client)
+
+@track()
+def generate_summary(text: str):
+    response = client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "Summarize the following text."},
+            {"role": "user", "content": text}
+        ],
+        max_tokens=100
+    )
+    return response.choices[0].message.content
+
+@track()
+def process_document(document: str):
+    # This will create a parent span
+    summary = generate_summary(document)
+    return {"summary": summary, "word_count": len(document.split())}
+
+result = process_document("Long document text here...")
+flush_tracker()
+```
+
+## Configuration Options
+
+### Project Name
+
+Specify a custom project name for organizing your traces:
+
+```python
+client = track_openai(client, project_name="my-openai-project")
+```
+
+### Provider Detection
+
+The integration automatically detects the provider based on the base URL:
+
+```python
+# For OpenAI-compatible endpoints
+client = OpenAI(base_url="https://api.groq.com/openai/v1")
+client = track_openai(client)  # Provider will be "api.groq.com"
+```
+
+## What Gets Tracked
+
+For each OpenAI API call, Opik captures:
+
+<CardGroup cols={2}>
+  <Card title="Input" icon="arrow-right-to-bracket">
+    - Messages sent to the model
+    - System prompts
+    - Function/tool definitions
+    - All request parameters
+  </Card>
+
+  <Card title="Output" icon="arrow-left-from-bracket">
+    - Model responses
+    - Completion choices
+    - Function call results
+    - Structured output objects
+  </Card>
+
+  <Card title="Metadata" icon="tags">
+    - Model name
+    - Response ID
+    - Creation timestamp
+    - Temperature and other settings
+  </Card>
+
+  <Card title="Usage" icon="chart-line">
+    - Prompt tokens
+    - Completion tokens
+    - Total tokens
+    - Detailed token breakdowns
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Async Support
+
+The integration works with both sync and async OpenAI clients:
+
+```python
+import asyncio
+from openai import AsyncOpenAI
+from opik import track
+from opik.integrations.openai import track_openai
+
+client = AsyncOpenAI()
+client = track_openai(client)
+
+@track()
+async def async_chat(message: str):
+    response = await client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": message}]
+    )
+    return response.choices[0].message.content
+
+asyncio.run(async_chat("Hello!"))
+```
+
+### Multiple Clients
+
+You can track multiple OpenAI clients independently:
+
+```python
+from openai import OpenAI
+from opik.integrations.openai import track_openai
+
+# Production client
+prod_client = OpenAI()
+prod_client = track_openai(prod_client, project_name="production")
+
+# Development client
+dev_client = OpenAI()
+dev_client = track_openai(dev_client, project_name="development")
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Always flush at the end">
+    Call `opik.flush_tracker()` at the end of your script to ensure all traces are sent:
+
+    ```python
+    from opik import flush_tracker
+
+    # Your code here...
+    
+    flush_tracker()
+    ```
+  </Step>
+
+  <Step title="Use meaningful project names">
+    Organize traces by using descriptive project names:
+
+    ```python
+    client = track_openai(client, project_name="customer-support-bot")
+    ```
+  </Step>
+
+  <Step title="Leverage nested tracking">
+    Combine `@track()` decorators to create hierarchical traces:
+
+    ```python
+    @track()
+    def main_workflow():
+        result1 = step_one()  # Also @track decorated
+        result2 = step_two()  # Also @track decorated
+        return combine(result1, result2)
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Traces not appearing
+
+Make sure to:
+1. Call `opik.configure()` before creating the client
+2. Call `opik.flush_tracker()` at the end of your script
+3. Check your Opik configuration with `opik.configure(use_local=False)`
+
+### Streaming not tracked properly
+
+Ensure you consume the entire stream:
+
+```python
+# Good - stream is fully consumed
+for chunk in stream:
+    process(chunk)
+
+# Bad - stream may not be fully consumed
+first_chunk = next(stream)
+```
+
+### Double tracking
+
+The integration is idempotent - calling `track_openai()` multiple times on the same client is safe and won't create duplicate traces.
+
+## Reference
+
+### `track_openai()`
+
+```python
+def track_openai(
+    openai_client: OpenAI | AsyncOpenAI,
+    project_name: Optional[str] = None,
+) -> OpenAI | AsyncOpenAI:
+    """
+    Adds Opik tracking to an OpenAI client.
+    
+    Args:
+        openai_client: An instance of OpenAI or AsyncOpenAI client
+        project_name: Optional project name for organizing traces
+    
+    Returns:
+        The modified client with Opik tracking enabled
+    """
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" href="/evaluation/overview" icon="chart-bar">
+    Learn how to evaluate your OpenAI model outputs
+  </Card>
+
+  <Card title="Prompts" href="/advanced/prompt-management" icon="message">
+    Manage and version your prompts
+  </Card>
+
+  <Card title="Datasets" href="/evaluation/datasets" icon="database">
+    Create datasets for testing
+  </Card>
+
+  <Card title="Other Integrations" href="/integrations" icon="plug">
+    Explore more LLM integrations
+  </Card>
+</CardGroup>

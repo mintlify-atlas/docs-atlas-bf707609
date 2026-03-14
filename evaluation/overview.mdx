@@ -1,0 +1,319 @@
+---
+title: "Evaluation Overview"
+description: "Learn how to evaluate and compare LLM applications using Opik's evaluation framework"
+---
+
+Opik's evaluation framework allows you to systematically test and compare different versions of your LLM application. It provides a structured way to run experiments, score outputs against datasets, and track performance over time.
+
+## Key Concepts
+
+The evaluation framework is built around four core components:
+
+<CardGroup cols={2}>
+  <Card title="Datasets" icon="database" href="/evaluation/datasets">
+    Collections of test cases with inputs and expected outputs
+  </Card>
+  <Card title="Experiments" icon="flask" href="/evaluation/experiments">
+    Runs of your LLM task against a dataset with tracked results
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="/evaluation/metrics">
+    Functions that score the quality of LLM outputs
+  </Card>
+  <Card title="Pytest Integration" icon="vial" href="/evaluation/pytest-integration">
+    Run evaluations as part of your test suite
+  </Card>
+</CardGroup>
+
+## Quick Start
+
+Here's a complete example of running an evaluation:
+
+```python
+import opik
+from opik.evaluation.metrics import Equals, Hallucination
+
+# Initialize client
+client = opik.Opik()
+
+# Create a dataset
+dataset = client.create_dataset(name="qa-dataset")
+dataset.insert([
+    {
+        "input": {"question": "What is the capital of France?"},
+        "expected_output": {"answer": "Paris"}
+    },
+    {
+        "input": {"question": "What is 2+2?"},
+        "expected_output": {"answer": "4"}
+    }
+])
+
+# Define your LLM task
+def qa_task(item):
+    # Your LLM logic here
+    question = item["input"]["question"]
+    # ... call your model ...
+    return {"output": model_response}
+
+# Run evaluation
+result = opik.evaluate(
+    dataset=dataset,
+    task=qa_task,
+    scoring_metrics=[Equals(), Hallucination()],
+    experiment_name="qa-experiment-v1"
+)
+
+print(f"Average score: {result.aggregate_scores()['equals_metric'].mean}")
+```
+
+## Evaluation Workflow
+
+<Steps>
+  <Step title="Create a Dataset">
+    Build a collection of test cases that represent your use case. Include inputs and expected outputs.
+    
+    ```python
+    dataset = client.create_dataset(name="my-dataset")
+    dataset.insert([
+        {"input": {...}, "expected_output": {...}},
+        # more items...
+    ])
+    ```
+  </Step>
+
+  <Step title="Define Your Task">
+    Create a function that takes a dataset item and returns your LLM's output.
+    
+    ```python
+    @opik.track()
+    def my_task(item):
+        # Process input
+        result = my_llm(item["input"])
+        return {"output": result}
+    ```
+  </Step>
+
+  <Step title="Choose Metrics">
+    Select or create metrics to evaluate output quality. Opik provides built-in metrics for common use cases.
+    
+    ```python
+    from opik.evaluation.metrics import Equals, Hallucination, ContextPrecision
+    
+    metrics = [Equals(), Hallucination()]
+    ```
+  </Step>
+
+  <Step title="Run the Evaluation">
+    Execute the evaluation and get results.
+    
+    ```python
+    result = opik.evaluate(
+        dataset=dataset,
+        task=my_task,
+        scoring_metrics=metrics,
+        experiment_name="experiment-v1"
+    )
+    ```
+  </Step>
+
+  <Step title="Analyze Results">
+    Review scores, compare experiments, and iterate on your application.
+    
+    ```python
+    # Get aggregated statistics
+    scores = result.aggregate_evaluation_scores()
+    print(scores['equals_metric'].mean)
+    
+    # Access individual test results
+    for test in result.test_results:
+        print(test.score_results)
+    ```
+  </Step>
+</Steps>
+
+## Evaluation Types
+
+Opik supports multiple evaluation patterns:
+
+### Standard Evaluation
+
+Run a task against a dataset with metrics:
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Equals()],
+    experiment_name="my-experiment"
+)
+```
+
+### Prompt Evaluation
+
+Evaluate prompt templates directly:
+
+```python
+messages = [
+    {"role": "system", "content": "You are a helpful assistant."},
+    {"role": "user", "content": "{question}"}
+]
+
+result = opik.evaluate_prompt(
+    dataset=dataset,
+    messages=messages,
+    model="gpt-3.5-turbo",
+    scoring_metrics=[Equals()]
+)
+```
+
+### Re-scoring Existing Experiments
+
+Apply new metrics to existing experiment results:
+
+```python
+result = opik.evaluate_experiment(
+    experiment_name="my-experiment",
+    scoring_metrics=[Hallucination()]
+)
+```
+
+### Lightweight Evaluation
+
+Quickly evaluate without creating datasets:
+
+```python
+items = [
+    {"input": "test 1", "expected": "output 1"},
+    {"input": "test 2", "expected": "output 2"}
+]
+
+result = opik.evaluate_on_dict_items(
+    items=items,
+    task=my_task,
+    scoring_metrics=[Equals()],
+    scoring_key_mapping={"reference": "expected"}
+)
+```
+
+## Configuration Options
+
+The `evaluate()` function supports extensive configuration:
+
+### Sampling and Filtering
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    nb_samples=10,  # Evaluate only 10 items
+    dataset_item_ids=["id1", "id2"],  # Specific items
+    dataset_filter_string='tags contains "production"'  # OQL filter
+)
+```
+
+### Performance Tuning
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    task_threads=32,  # Parallel task execution
+    trial_count=3  # Run each item 3 times
+)
+```
+
+### Experiment Configuration
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    experiment_name="my-experiment",
+    experiment_name_prefix="qa-",  # Auto-generate unique names
+    experiment_config={"model": "gpt-4", "temperature": 0.7},
+    experiment_tags=["production", "v2"],
+    project_name="my-project"
+)
+```
+
+## Key Mapping
+
+Use `scoring_key_mapping` to align dataset fields with metric expectations:
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[Equals()],
+    scoring_key_mapping={
+        "output": "model_response",  # Rename task output
+        "reference": "expected_output",  # Map dataset field
+        "input": lambda x: x["user_query"]  # Use callable
+    }
+)
+```
+
+## Experiment-Level Scoring
+
+Compute aggregate metrics across all test results:
+
+```python
+from opik.evaluation.metrics import score_result
+from opik.evaluation import test_result
+from typing import List
+
+def compute_pass_rate(
+    test_results: List[test_result.TestResult]
+) -> List[score_result.ScoreResult]:
+    passing = sum(1 for r in test_results if r.score_results[0].value > 0.8)
+    pass_rate = passing / len(test_results)
+    
+    return [score_result.ScoreResult(
+        name="pass_rate",
+        value=pass_rate
+    )]
+
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[Equals()],
+    experiment_scoring_functions=[compute_pass_rate]
+)
+```
+
+## Streaming Evaluation
+
+Opik automatically streams large datasets to start evaluation before all items are downloaded:
+
+```python
+# Evaluation starts processing as items arrive
+result = opik.evaluate(
+    dataset=large_dataset,  # Thousands of items
+    task=task,
+    scoring_metrics=metrics
+)
+```
+
+<Info>
+Streaming happens automatically when datasets are large. The evaluation engine processes items as they're fetched in batches.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Datasets" icon="database" href="/evaluation/datasets">
+    Learn how to create and manage datasets
+  </Card>
+  <Card title="Experiments" icon="flask" href="/evaluation/experiments">
+    Understand experiment tracking and comparison
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="/evaluation/metrics">
+    Explore built-in metrics and create custom ones
+  </Card>
+  <Card title="Pytest Integration" icon="vial" href="/evaluation/pytest-integration">
+    Integrate evaluations into your testing workflow
+  </Card>
+</CardGroup>

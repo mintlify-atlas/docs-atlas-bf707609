@@ -1,0 +1,354 @@
+---
+title: "Docker Compose Deployment"
+description: "Self-host Opik locally using Docker Compose for development and testing"
+---
+
+## Overview
+
+Docker Compose provides the simplest way to run Opik locally for development, testing, or small-scale deployments. This method is ideal for individual developers and small teams who want full control over their Opik instance.
+
+<Note>
+  Docker Compose deployment is recommended for development and testing. For production workloads, use [Kubernetes deployment](/deployment/kubernetes).
+</Note>
+
+## Prerequisites
+
+- **Docker**: Version 20.10 or later ([Install Docker](https://docs.docker.com/get-docker/))
+- **Docker Compose**: Version 2.0 or later (included with Docker Desktop)
+- **System Requirements**:
+  - 4GB RAM minimum (8GB recommended)
+  - 10GB free disk space
+  - Modern CPU (2+ cores recommended)
+
+## Quick Start
+
+<Steps>
+  <Step title="Clone the Repository">
+    <Tabs>
+      <Tab title="Linux / macOS">
+        ```bash
+        git clone https://github.com/comet-ml/opik.git
+        cd opik
+        ```
+      </Tab>
+      
+      <Tab title="Windows">
+        ```powershell
+        git clone https://github.com/comet-ml/opik.git
+        cd opik
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Start Opik">
+    <Tabs>
+      <Tab title="Linux / macOS">
+        ```bash
+        # Start the full Opik platform
+        ./opik.sh
+        ```
+
+        The script will:
+        1. Build Docker images if needed
+        2. Start all services (frontend, backend, databases)
+        3. Run database migrations
+        4. Health check all components
+      </Tab>
+      
+      <Tab title="Windows">
+        ```powershell
+        # Start the full Opik platform
+        powershell -ExecutionPolicy ByPass -c ".\opik.ps1"
+        ```
+      </Tab>
+    </Tabs>
+
+    <Info>
+      First-time startup may take 5-10 minutes to build images and initialize databases.
+    </Info>
+  </Step>
+
+  <Step title="Access Opik">
+    Once all services are running, access Opik at:
+
+    - **Web Interface**: [http://localhost:5173](http://localhost:5173)
+    - **Backend API**: [http://localhost:5000](http://localhost:5000)
+    - **API Docs**: [http://localhost:5000/docs](http://localhost:5000/docs)
+
+    <Note>
+      No authentication is required for local Docker Compose deployments.
+    </Note>
+  </Step>
+
+  <Step title="Configure Your SDK">
+    Configure your Opik SDK to use the local instance:
+
+    <Tabs>
+      <Tab title="Python">
+        ```bash
+        opik configure --use_local
+        ```
+
+        Or programmatically:
+        ```python
+        import opik
+
+        opik.configure(use_local=True)
+        ```
+      </Tab>
+
+      <Tab title="TypeScript">
+        ```typescript
+        import { Opik } from 'opik';
+
+        const client = new Opik({
+          baseUrl: 'http://localhost:5000'
+        });
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## Service Profiles
+
+The `opik.sh` script supports different service profiles for various development scenarios:
+
+<CodeGroup>
+
+```bash Full Stack (Default)
+# Start all services: frontend, backend, databases, python-backend
+./opik.sh
+```
+
+```bash Infrastructure Only
+# Start only databases and caching (MySQL, ClickHouse, Redis)
+./opik.sh --infra
+```
+
+```bash Backend Services
+# Start infrastructure + backend API
+./opik.sh --backend
+```
+
+```bash With Guardrails
+# Enable guardrails service (PII detection, moderation)
+./opik.sh --guardrails
+
+# Or combine with other profiles
+./opik.sh --backend --guardrails
+```
+
+</CodeGroup>
+
+## Management Commands
+
+<Tabs>
+  <Tab title="Linux / macOS">
+    ```bash
+    # Stop all services
+    ./opik.sh --stop
+
+    # Rebuild images and restart
+    ./opik.sh --build
+
+    # View service status
+    ./opik.sh --info
+
+    # View logs
+    docker compose -f deployment/docker-compose/docker-compose.yaml logs -f
+
+    # View logs for specific service
+    docker compose -f deployment/docker-compose/docker-compose.yaml logs -f opik-backend
+    ```
+  </Tab>
+
+  <Tab title="Windows">
+    ```powershell
+    # Stop all services
+    powershell -ExecutionPolicy ByPass -c ".\opik.ps1 --stop"
+
+    # Rebuild images and restart  
+    powershell -ExecutionPolicy ByPass -c ".\opik.ps1 --build"
+
+    # View logs
+    docker compose -f deployment/docker-compose/docker-compose.yaml logs -f
+    ```
+  </Tab>
+</Tabs>
+
+## Port Configuration
+
+Default ports used by Opik services:
+
+| Service | Port | Description |
+|---------|------|-------------|
+| Frontend | 5173 | Web UI |
+| Backend API | 5000 | REST API |
+| Python Backend | 8000 | Evaluation & metrics service |
+| MySQL | 3306 | Database |
+| ClickHouse | 8123 | Analytics database |
+| Redis | 6379 | Cache & queue |
+| Guardrails | 8088 | PII detection (optional) |
+
+<Accordion title="Change default ports">
+  To change ports, edit `deployment/docker-compose/docker-compose.yaml`:
+
+  ```yaml
+  services:
+    opik-frontend:
+      ports:
+        - "8080:5173"  # Map to port 8080 instead of 5173
+  ```
+
+  Then restart services:
+  ```bash
+  ./opik.sh --stop
+  ./opik.sh
+  ```
+</Accordion>
+
+## Data Persistence
+
+Opik uses Docker volumes to persist data:
+
+```bash
+# View volumes
+docker volume ls | grep opik
+
+# Backup data
+docker compose -f deployment/docker-compose/docker-compose.yaml exec mysql \
+  mysqldump -u root -ppassword opik > opik_backup.sql
+
+# Remove all data (WARNING: This deletes everything!)
+docker compose -f deployment/docker-compose/docker-compose.yaml down -v
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Services fail to start" icon="triangle-exclamation">
+    **Check Docker resources:**
+    ```bash
+    docker info | grep -E 'CPUs|Total Memory'
+    ```
+
+    Ensure you have at least:
+    - 4GB RAM available
+    - 10GB free disk space
+
+    **Check port conflicts:**
+    ```bash
+    # Check if ports are already in use
+    lsof -i :5173  # Frontend
+    lsof -i :5000  # Backend
+    lsof -i :3306  # MySQL
+    ```
+
+    Stop any conflicting services or change Opik's ports.
+  </Accordion>
+
+  <Accordion title="Cannot access web interface" icon="globe">
+    1. Verify frontend is running:
+       ```bash
+       docker ps | grep opik-frontend
+       ```
+
+    2. Check frontend logs:
+       ```bash
+       docker logs opik-frontend
+       ```
+
+    3. Ensure you're accessing the correct URL: `http://localhost:5173`
+
+    4. Try accessing from a different browser or incognito mode
+  </Accordion>
+
+  <Accordion title="SDK cannot connect" icon="plug">
+    1. Verify backend is running:
+       ```bash
+       curl http://localhost:5000/healthcheck
+       ```
+
+    2. Check SDK configuration:
+       ```python
+       import opik
+       client = opik.Opik()
+       print(client.config.base_url)  # Should be http://localhost:5000
+       ```
+
+    3. Ensure `use_local=True` is set in configuration
+
+    4. Check for firewall blocking localhost connections
+  </Accordion>
+
+  <Accordion title="Database migration errors" icon="database">
+    1. Check MySQL is running:
+       ```bash
+       docker ps | grep mysql
+       ```
+
+    2. Run migrations manually:
+       ```bash
+       docker compose -f deployment/docker-compose/docker-compose.yaml \
+         exec opik-backend ./run_db_migrations.sh
+       ```
+
+    3. If migrations fail, check backend logs:
+       ```bash
+       docker logs opik-backend
+       ```
+  </Accordion>
+
+  <Accordion title="Out of disk space" icon="hard-drive">
+    Clean up unused Docker resources:
+
+    ```bash
+    # Remove unused images
+    docker image prune -a
+
+    # Remove unused volumes (WARNING: May delete data)
+    docker volume prune
+
+    # Remove all unused resources
+    docker system prune -a --volumes
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Updating Opik
+
+To update to the latest version:
+
+```bash
+# Stop current instance
+./opik.sh --stop
+
+# Pull latest changes
+git pull origin main
+
+# Rebuild and restart
+./opik.sh --build
+```
+
+<Warning>
+  Always backup your data before updating. Database migrations are automatic but irreversible.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Configure SDK" icon="code" href="/sdk/python/configuration">
+    Set up your SDK to use the local instance
+  </Card>
+  <Card title="Quickstart Guide" icon="rocket" href="/introduction">
+    Start logging your first traces
+  </Card>
+  <Card title="Production Deployment" icon="dharmachakra" href="/deployment/kubernetes">
+    Deploy to Kubernetes for production
+  </Card>
+  <Card title="Get Help" icon="slack" href="https://chat.comet.com">
+    Join our Slack community
+  </Card>
+</CardGroup>

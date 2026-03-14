@@ -1,0 +1,529 @@
+---
+title: "Experiments"
+description: "Track and compare LLM application experiments with Opik"
+---
+
+Experiments in Opik represent runs of your LLM task against a dataset. Each experiment tracks inputs, outputs, scores, and metadata, allowing you to compare different approaches and track performance over time.
+
+## Creating Experiments
+
+### Automatic Creation via Evaluate
+
+The most common way to create experiments is through the `evaluate()` function:
+
+```python
+import opik
+
+result = opik.evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=metrics,
+    experiment_name="gpt-4-baseline"
+)
+
+print(f"Experiment ID: {result.experiment_id}")
+print(f"Experiment URL: {result.experiment_url}")
+```
+
+### Auto-Generated Names
+
+Let Opik generate unique experiment names:
+
+```python
+# Unique random name
+result = opik.evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=metrics
+    # experiment_name will be auto-generated
+)
+
+# Unique name with prefix
+result = opik.evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=metrics,
+    experiment_name_prefix="qa-model-"
+    # Creates "qa-model-<random-suffix>"
+)
+```
+
+### Manual Creation
+
+```python
+client = opik.Opik()
+
+experiment = client.create_experiment(
+    name="my-experiment",
+    dataset_name="my-dataset",
+    experiment_config={"model": "gpt-4", "temperature": 0.7},
+    tags=["production", "v2"]
+)
+```
+
+## Experiment Configuration
+
+Store experiment metadata to track what you're testing:
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    experiment_name="gpt-4-high-temp",
+    experiment_config={
+        "model": "gpt-4",
+        "temperature": 0.9,
+        "max_tokens": 500,
+        "prompt_version": "v2.1",
+        "system_prompt": "You are a helpful assistant."
+    },
+    experiment_tags=["production", "high-creativity"],
+    project_name="customer-support"
+)
+```
+
+<Info>
+Experiment config can contain any JSON-serializable data. Use it to track hyperparameters, prompt versions, or any other relevant metadata.
+</Info>
+
+## Retrieving Experiments
+
+### By ID
+
+```python
+client = opik.Opik()
+
+experiment = client.get_experiment_by_id(
+    id="experiment-id-123"
+)
+
+print(experiment.name)
+print(experiment.dataset_name)
+print(experiment.tags)
+```
+
+### By Name
+
+```python
+# Note: experiment names should be unique
+experiment = client.get_experiment(
+    name="my-experiment"
+)
+```
+
+## Experiment Properties
+
+```python
+experiment = client.get_experiment_by_id("exp-123")
+
+# Basic properties
+print(experiment.id)  # Experiment ID
+print(experiment.name)  # Experiment name
+print(experiment.dataset_name)  # Associated dataset
+print(experiment.dataset_id)  # Dataset ID
+print(experiment.tags)  # List of tags
+
+# Get full experiment data
+data = experiment.get_experiment_data()
+print(data.name)
+print(data.created_at)
+print(data.last_updated_at)
+```
+
+## Experiment Items
+
+Experiment items link dataset items to traces and store evaluation results:
+
+### Retrieving Items
+
+```python
+# Get experiment items
+items = experiment.get_items(max_results=100)
+
+for item in items:
+    print(f"Dataset Item ID: {item.dataset_item_id}")
+    print(f"Trace ID: {item.trace_id}")
+    print(f"Input: {item.dataset_item_data}")
+    print(f"Output: {item.evaluation_task_output}")
+    print(f"Scores: {item.feedback_scores}")
+    print("---")
+```
+
+### Item Structure
+
+```python
+from opik.api_objects.experiment.experiment_item import ExperimentItemContent
+
+item: ExperimentItemContent
+# item.id - Experiment item ID
+# item.dataset_item_id - Reference to dataset item
+# item.trace_id - Reference to trace created during evaluation
+# item.dataset_item_data - Original dataset item content
+# item.evaluation_task_output - Task output for this item
+# item.feedback_scores - List of scores from metrics
+```
+
+### Manual Item Insertion
+
+Link existing traces to experiments:
+
+```python
+from opik.api_objects.experiment.experiment_item import ExperimentItemReferences
+
+experiment.insert([
+    ExperimentItemReferences(
+        dataset_item_id="item-123",
+        trace_id="trace-456",
+        project_name="my-project"
+    )
+])
+```
+
+## Re-scoring Experiments
+
+Apply new metrics to existing experiment results without re-running the task:
+
+```python
+from opik.evaluation.metrics import Hallucination, ContextRecall
+
+# Evaluate existing experiment with new metrics
+result = opik.evaluate_experiment(
+    experiment_name="my-experiment",
+    scoring_metrics=[Hallucination(), ContextRecall()],
+    scoring_threads=16
+)
+
+print(f"Re-scored {len(result.test_results)} items")
+```
+
+### With Key Mapping
+
+```python
+result = opik.evaluate_experiment(
+    experiment_name="my-experiment",
+    scoring_metrics=[Equals()],
+    scoring_key_mapping={
+        "reference": lambda x: x["expected_output"]["answer"],
+        "output": "model_response"
+    }
+)
+```
+
+## Analyzing Results
+
+### Evaluation Result Object
+
+The `evaluate()` function returns an `EvaluationResult` object:
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics
+)
+
+# Basic info
+print(result.experiment_id)
+print(result.experiment_name)
+print(result.dataset_id)
+print(result.experiment_url)
+print(result.trial_count)
+
+# Test results
+for test in result.test_results:
+    print(f"Dataset item: {test.dataset_item}")
+    print(f"Output: {test.output}")
+    print(f"Scores: {test.score_results}")
+    print(f"Trace ID: {test.trace_id}")
+```
+
+### Aggregate Scores
+
+Get statistical summaries of metric scores:
+
+```python
+aggregated = result.aggregate_evaluation_scores()
+
+for metric_name, stats in aggregated.items():
+    print(f"{metric_name}:")
+    print(f"  Mean: {stats.mean}")
+    print(f"  Median: {stats.median}")
+    print(f"  Min: {stats.min}")
+    print(f"  Max: {stats.max}")
+    print(f"  Std Dev: {stats.std}")
+```
+
+### Experiment-Level Scores
+
+Compute custom aggregate metrics:
+
+```python
+from opik.evaluation.metrics import score_result
+from opik.evaluation import test_result
+from typing import List
+
+def compute_pass_rate(
+    test_results: List[test_result.TestResult]
+) -> List[score_result.ScoreResult]:
+    """Calculate percentage of items scoring above 0.8"""
+    if not test_results:
+        return []
+    
+    passing = sum(
+        1 for r in test_results 
+        if r.score_results and r.score_results[0].value > 0.8
+    )
+    pass_rate = passing / len(test_results)
+    
+    return [score_result.ScoreResult(
+        name="pass_rate",
+        value=pass_rate,
+        reason=f"{passing}/{len(test_results)} items passed"
+    )]
+
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=[Equals()],
+    experiment_scoring_functions=[compute_pass_rate]
+)
+
+# Access experiment-level scores
+for score in result.experiment_scores:
+    print(f"{score.name}: {score.value}")
+```
+
+## Comparing Experiments
+
+Run multiple experiments and compare results:
+
+```python
+import opik
+from opik.evaluation.metrics import Equals, Hallucination
+
+client = opik.Opik()
+dataset = client.get_dataset("qa-dataset")
+metrics = [Equals(), Hallucination()]
+
+# Baseline experiment
+baseline = opik.evaluate(
+    dataset=dataset,
+    task=gpt_35_task,
+    scoring_metrics=metrics,
+    experiment_name="gpt-3.5-baseline",
+    experiment_config={"model": "gpt-3.5-turbo"}
+)
+
+# Improved experiment
+improved = opik.evaluate(
+    dataset=dataset,
+    task=gpt_4_task,
+    scoring_metrics=metrics,
+    experiment_name="gpt-4-improved",
+    experiment_config={"model": "gpt-4"}
+)
+
+# Compare results
+baseline_scores = baseline.aggregate_evaluation_scores()
+improved_scores = improved.aggregate_evaluation_scores()
+
+for metric in ["equals_metric", "hallucination_metric"]:
+    baseline_mean = baseline_scores[metric].mean
+    improved_mean = improved_scores[metric].mean
+    improvement = ((improved_mean - baseline_mean) / baseline_mean) * 100
+    
+    print(f"{metric}:")
+    print(f"  Baseline: {baseline_mean:.3f}")
+    print(f"  Improved: {improved_mean:.3f}")
+    print(f"  Change: {improvement:+.1f}%")
+```
+
+## Experiment Versioning
+
+Experiments are automatically linked to dataset versions:
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics
+)
+
+# Check which dataset version was used
+experiment = client.get_experiment_by_id(result.experiment_id)
+data = experiment.get_experiment_data()
+print(f"Dataset version: {data.dataset_version_id}")
+```
+
+Evaluate against a specific dataset version:
+
+```python
+version_v1 = dataset.get_version_view("v1")
+
+result = opik.evaluate(
+    dataset=version_v1,  # Use specific version
+    task=task,
+    scoring_metrics=metrics,
+    experiment_name="test-on-v1"
+)
+```
+
+## Trial Runs
+
+Run your task multiple times per dataset item:
+
+```python
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    trial_count=5  # Run task 5 times per item
+)
+
+# Each dataset item will have 5 test results
+print(f"Total test results: {len(result.test_results)}")
+print(f"Dataset items: {dataset.dataset_items_count}")
+print(f"Trials per item: {result.trial_count}")
+```
+
+<Tip>
+Use `trial_count > 1` to measure consistency for non-deterministic models.
+</Tip>
+
+## Prompts and Experiments
+
+Link prompt versions to experiments:
+
+```python
+# Create or get a prompt
+prompt = client.create_prompt(
+    name="qa-prompt",
+    prompt="Answer the question: {question}"
+)
+
+# Link to experiment
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    prompts=[prompt]  # Link prompt(s) to experiment
+)
+```
+
+## Optimization Experiments
+
+Track experiments as part of optimization trials:
+
+```python
+result = opik.evaluate_optimization_trial(
+    optimization_id="opt-123",
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics,
+    experiment_name="trial-1",
+    experiment_config={"learning_rate": 0.001}
+)
+```
+
+## Example: A/B Testing
+
+Compare two different approaches:
+
+```python
+import opik
+from opik.evaluation.metrics import Equals, ContextPrecision
+
+client = opik.Opik()
+dataset = client.get_dataset("support-qa")
+
+# Approach A: Direct answering
+def approach_a(item):
+    question = item["input"]["question"]
+    # ... call model with direct prompt
+    return {"output": answer}
+
+# Approach B: Chain-of-thought
+def approach_b(item):
+    question = item["input"]["question"]
+    # ... call model with CoT prompt
+    return {"output": answer}
+
+metrics = [Equals(), ContextPrecision()]
+
+# Run both experiments
+result_a = opik.evaluate(
+    dataset=dataset,
+    task=approach_a,
+    scoring_metrics=metrics,
+    experiment_name="direct-answering",
+    experiment_tags=["ab-test", "approach-a"]
+)
+
+result_b = opik.evaluate(
+    dataset=dataset,
+    task=approach_b,
+    scoring_metrics=metrics,
+    experiment_name="chain-of-thought",
+    experiment_tags=["ab-test", "approach-b"]
+)
+
+# Compare results
+scores_a = result_a.aggregate_evaluation_scores()
+scores_b = result_b.aggregate_evaluation_scores()
+
+print("\nComparison:")
+for metric_name in scores_a:
+    print(f"{metric_name}:")
+    print(f"  Approach A: {scores_a[metric_name].mean:.3f}")
+    print(f"  Approach B: {scores_b[metric_name].mean:.3f}")
+```
+
+## Experiment Completion
+
+Opik automatically notifies the backend when experiments complete:
+
+```python
+# Experiments are marked complete automatically after evaluate() finishes
+result = opik.evaluate(
+    dataset=dataset,
+    task=task,
+    scoring_metrics=metrics
+)
+
+# Ensure all data is flushed
+client.flush()
+```
+
+## Best Practices
+
+<Tip>
+**Meaningful Names**: Use descriptive experiment names that indicate what you're testing (e.g., "gpt-4-with-examples" instead of "experiment-1").
+</Tip>
+
+<Tip>
+**Config Metadata**: Store all relevant configuration in `experiment_config` so you can reproduce results later.
+</Tip>
+
+<Tip>
+**Tags for Organization**: Use tags to group related experiments (e.g., `["production", "v2"]` or `["ab-test", "variant-a"]`).
+</Tip>
+
+<Tip>
+**Version Tracking**: Link experiments to specific dataset versions to ensure reproducibility.
+</Tip>
+
+<Tip>
+**Baseline First**: Run a baseline experiment before making changes so you have a reference point for comparison.
+</Tip>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Metrics" icon="chart-line" href="/evaluation/metrics">
+    Learn about built-in metrics and creating custom scorers
+  </Card>
+  <Card title="Datasets" icon="database" href="/evaluation/datasets">
+    Manage and version your evaluation datasets
+  </Card>
+</CardGroup>

@@ -1,0 +1,244 @@
+---
+title: "Prompt Playground"
+description: "Test and iterate on prompts interactively with the Opik Prompt Playground"
+---
+
+The Prompt Playground is an interactive environment in the Opik UI that allows you to test and refine prompts in real-time before integrating them into your codebase. It supports both text and chat-style prompts with multimodal content.
+
+## Overview
+
+The Prompt Playground enables you to:
+
+- **Test prompts interactively**: Run prompts against different LLM models without writing code
+- **Compare outputs**: Test multiple model configurations side-by-side
+- **Manage versions**: Track prompt iterations with commit hashes and change descriptions
+- **Export to code**: Convert playground prompts to SDK code with proper formatting
+
+## Creating Prompts in the Playground
+
+<Steps>
+  <Step title="Access the Playground">
+    Navigate to the Prompts section in the Opik UI and click "New Prompt" or open an existing prompt.
+  </Step>
+  
+  <Step title="Choose Prompt Type">
+    Select between:
+    - **Text Prompt**: Simple string-based templates
+    - **Chat Prompt**: Message-based prompts with role/content structure
+  </Step>
+  
+  <Step title="Configure Your Prompt">
+    - Add template variables using `{{variable_name}}` syntax (Mustache) or `{{ variable_name }}` (Jinja2)
+    - For chat prompts, define messages with roles (system, user, assistant)
+    - Add metadata, descriptions, and tags for better organization
+  </Step>
+  
+  <Step title="Test with Variables">
+    Enter test values for your variables and run the prompt against your chosen model to see the output.
+  </Step>
+</Steps>
+
+## Template Types
+
+Opik supports two templating engines:
+
+<Tabs>
+  <Tab title="Mustache">
+    ```mustache
+    Hello {{name}}! Welcome to {{location}}.
+    ```
+    
+    **Features:**
+    - Simple variable substitution: `{{variable}}`
+    - Default template type
+    - Best for straightforward use cases
+  </Tab>
+  
+  <Tab title="Jinja2">
+    ```jinja2
+    Hello {{ name }}! 
+    {% if premium %}
+    You have premium access to {{ location }}.
+    {% else %}
+    Welcome to {{ location }}.
+    {% endif %}
+    ```
+    
+    **Features:**
+    - Advanced templating with conditionals and loops
+    - More powerful but complex syntax
+    - Ideal for dynamic prompt generation
+  </Tab>
+</Tabs>
+
+## Using Playground Prompts in Code
+
+Prompts created in the playground can be retrieved and used in your code:
+
+### Text Prompts
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get the latest version
+prompt = client.get_prompt(name="my-text-prompt")
+
+# Get a specific version by commit hash
+prompt = client.get_prompt(
+    name="my-text-prompt",
+    commit="abc123def456"
+)
+
+# Format the prompt with variables
+formatted = prompt.format(
+    name="Alice",
+    location="San Francisco"
+)
+print(formatted)
+```
+
+### Chat Prompts
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get chat prompt
+chat_prompt = client.get_chat_prompt(name="my-chat-prompt")
+
+# Format with variables
+messages = chat_prompt.format(
+    variables={"user_query": "What is machine learning?"}
+)
+
+# Use with LLM
+import litellm
+response = litellm.completion(
+    model="gpt-4",
+    messages=messages
+)
+```
+
+<Note>
+Playground prompts created via the UI have metadata `{"created_from": "opik_ui"}`. Chat prompts also include `{"type": "messages_json"}` in their metadata.
+</Note>
+
+## Prompt Versioning
+
+Every change to a prompt creates a new version with a unique commit hash:
+
+```python
+client = opik.Opik()
+
+# Get version history
+history = client.get_prompt_history(name="my-prompt")
+
+for version in history:
+    print(f"Commit: {version.commit}")
+    print(f"Template: {version.prompt}")
+    print(f"Description: {version.change_description}")
+    print("---")
+```
+
+### Version Properties
+
+Each prompt version includes:
+
+- **commit**: Unique hash identifying the version (read from ~/workspace/source/sdks/python/src/opik/api_objects/prompt/text/prompt.py:101-103)
+- **version_id**: UUID for the version (read from ~/workspace/source/sdks/python/src/opik/api_objects/prompt/text/prompt.py:107-109)
+- **change_description**: Optional description of changes (read from ~/workspace/source/sdks/python/src/opik/api_objects/prompt/text/prompt.py:137-139)
+- **tags**: List of tags for categorization (read from ~/workspace/source/sdks/python/src/opik/api_objects/prompt/text/prompt.py:143-145)
+- **metadata**: Custom metadata dictionary (read from ~/workspace/source/sdks/python/src/opik/api_objects/prompt/text/prompt.py:113-115)
+
+## Multimodal Support
+
+Chat prompts support multimodal content including images, audio, and video:
+
+```python
+from opik.api_objects.prompt import ChatPrompt
+
+# Create a chat prompt with image content
+chat_prompt = ChatPrompt(
+    name="vision-prompt",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "What's in this image?"},
+                {"type": "image_url", "image_url": {"url": "https://example.com/image.jpg"}}
+            ]
+        }
+    ]
+)
+
+# Format with modality support
+formatted = chat_prompt.format(
+    variables={},
+    supported_modalities={"vision": True, "video": False}
+)
+```
+
+<Info>
+When a modality is not supported, structured content parts are replaced with text placeholders like `<<<image>>>` or `<<<video>>>`.
+</Info>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Descriptive Names" icon="tag">
+    Name prompts clearly to identify their purpose (e.g., `customer-support-greeting`, `code-review-assistant`)
+  </Card>
+  
+  <Card title="Add Change Descriptions" icon="message">
+    Document what changed in each version to track improvements over time
+  </Card>
+  
+  <Card title="Tag Your Prompts" icon="bookmark">
+    Use tags to organize prompts by project, team, or use case
+  </Card>
+  
+  <Card title="Test Before Production" icon="flask">
+    Validate prompts in the playground before deploying to production code
+  </Card>
+</CardGroup>
+
+## Filtering and Search
+
+Search through prompt history with filters:
+
+```python
+# Search by text
+history = client.get_prompt_history(
+    name="my-prompt",
+    search="improved accuracy"
+)
+
+# Filter using Opik Query Language (OQL)
+history = client.get_prompt_history(
+    name="my-prompt",
+    filter_string="created_by = 'alice@example.com' AND metadata.environment = 'production'"
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Optimize Prompts" icon="chart-line" href="/advanced/agent-optimizer">
+    Use the Agent Optimizer to automatically improve your prompts
+  </Card>
+  
+  <Card title="Prompt Management" icon="folder" href="/advanced/prompt-management">
+    Learn advanced prompt management techniques
+  </Card>
+  
+  <Card title="Evaluate Prompts" icon="clipboard-check" href="/evaluation/overview">
+    Test prompt performance with evaluation metrics
+  </Card>
+  
+  <Card title="Guardrails" icon="shield" href="/advanced/guardrails">
+    Add safety checks to your prompts
+  </Card>
+</CardGroup>

@@ -1,0 +1,204 @@
+---
+title: "Authentication"
+description: "Learn how to authenticate with the Opik REST API"
+---
+
+## Overview
+
+Authentication varies depending on whether you're using a self-hosted Opik instance or Opik Cloud.
+
+## Self-hosted Authentication
+
+For self-hosted Opik deployments, authentication is typically not required by default. You can make requests directly to your Opik server:
+
+```bash
+curl -X GET 'http://localhost:5173/api/v1/private/projects' \
+  -H 'Accept: application/json'
+```
+
+## Opik Cloud Authentication
+
+For Opik Cloud, you need to provide your API key and workspace name in the request headers.
+
+### Required Headers
+
+<ParamField header="authorization" type="string" required>
+  Your Opik API key (without the `Bearer ` prefix)
+</ParamField>
+
+<ParamField header="Comet-Workspace" type="string" required>
+  Your workspace name
+</ParamField>
+
+### Getting Your API Key
+
+1. Log in to [Opik Cloud](https://www.comet.com/opik)
+2. Navigate to your account settings
+3. Generate or copy your API key
+
+### Example Request
+
+```bash
+curl -X GET 'https://www.comet.com/opik/api/v1/private/projects' \
+  -H 'Accept: application/json' \
+  -H 'Comet-Workspace: your-workspace-name' \
+  -H 'authorization: your-api-key'
+```
+
+<CodeGroup>
+
+```bash curl
+curl -X GET 'https://www.comet.com/opik/api/v1/private/projects' \
+  -H 'Accept: application/json' \
+  -H 'Comet-Workspace: your-workspace-name' \
+  -H 'authorization: your-api-key'
+```
+
+```python Python
+import requests
+
+headers = {
+    'Accept': 'application/json',
+    'Comet-Workspace': 'your-workspace-name',
+    'authorization': 'your-api-key'
+}
+
+response = requests.get(
+    'https://www.comet.com/opik/api/v1/private/projects',
+    headers=headers
+)
+
+print(response.json())
+```
+
+```javascript JavaScript
+const headers = {
+  'Accept': 'application/json',
+  'Comet-Workspace': 'your-workspace-name',
+  'authorization': 'your-api-key'
+};
+
+fetch('https://www.comet.com/opik/api/v1/private/projects', {
+  method: 'GET',
+  headers: headers
+})
+  .then(response => response.json())
+  .then(data => console.log(data));
+```
+
+</CodeGroup>
+
+## Check Access Endpoint
+
+You can verify your authentication credentials using the check access endpoint.
+
+### POST /v1/private/auth
+
+Check user access to workspace.
+
+**Request Body:**
+
+```json
+{
+  "workspace_name": "your-workspace-name"
+}
+```
+
+**Responses:**
+
+<ResponseField name="204" type="No Content">
+  Access granted - authentication successful
+</ResponseField>
+
+<ResponseField name="401" type="Unauthorized">
+  Invalid credentials
+</ResponseField>
+
+<ResponseField name="403" type="Forbidden">
+  Access forbidden - valid credentials but no access to workspace
+</ResponseField>
+
+### Example
+
+```bash
+curl -X POST 'https://www.comet.com/opik/api/v1/private/auth' \
+  -H 'Content-Type: application/json' \
+  -H 'Comet-Workspace: your-workspace-name' \
+  -H 'authorization: your-api-key' \
+  -d '{"workspace_name": "your-workspace-name"}'
+```
+
+## Get Workspace Name
+
+Retrieve your default workspace name.
+
+### GET /v1/private/auth/workspace
+
+**Response:**
+
+```json
+{
+  "workspace_name": "your-workspace-name"
+}
+```
+
+**Example:**
+
+```bash
+curl -X GET 'https://www.comet.com/opik/api/v1/private/auth/workspace' \
+  -H 'Accept: application/json' \
+  -H 'authorization: your-api-key'
+```
+
+## Security Best Practices
+
+<Warning>
+  Never commit API keys to version control or expose them in client-side code.
+</Warning>
+
+### Recommendations
+
+1. **Store API keys securely** - Use environment variables or secure credential managers
+2. **Rotate keys regularly** - Generate new API keys periodically
+3. **Use workspace-specific keys** - Create separate keys for different environments
+4. **Monitor API usage** - Track API calls to detect unauthorized access
+
+### Environment Variables
+
+Store your credentials in environment variables:
+
+```bash
+export OPIK_API_KEY="your-api-key"
+export OPIK_WORKSPACE="your-workspace-name"
+```
+
+Then reference them in your code:
+
+```python
+import os
+import requests
+
+headers = {
+    'authorization': os.environ['OPIK_API_KEY'],
+    'Comet-Workspace': os.environ['OPIK_WORKSPACE']
+}
+```
+
+## SDK Authentication
+
+When using the Opik SDK, authentication is handled automatically:
+
+```python
+import opik
+
+# Configure with API key and workspace
+opik.configure(
+    api_key="your-api-key",
+    workspace="your-workspace-name"
+)
+
+# Or use Opik Cloud with interactive configuration
+opik.configure(use_local=False)
+```
+
+See the [SDK documentation](/python-sdk-reference) for more details.

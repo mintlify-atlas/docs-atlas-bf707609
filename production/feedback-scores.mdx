@@ -1,0 +1,571 @@
+---
+title: "Feedback Scores"
+description: "Track and analyze feedback scores for your LLM applications"
+---
+
+Feedback scores are numerical or categorical ratings that measure the quality and performance of your LLM applications. They can come from automated metrics (LLM-as-a-Judge), human reviewers, or user interactions, providing valuable insights into your application's behavior.
+
+## Overview
+
+Feedback scores help you:
+
+- **Measure quality** - Track metrics like accuracy, relevance, and hallucination
+- **Monitor trends** - Understand how quality evolves over time
+- **Compare approaches** - Evaluate different models, prompts, or configurations
+- **Identify issues** - Spot low-quality outputs that need attention
+- **Drive improvements** - Use data to guide optimization efforts
+
+## Types of Feedback Scores
+
+### Automated Scores (LLM-as-a-Judge)
+
+Scores generated automatically using evaluation metrics:
+
+```python
+from opik.evaluation.metrics import Hallucination, AnswerRelevance
+import opik
+
+client = opik.Opik()
+
+# Create metrics
+hallucination_metric = Hallucination()
+relevance_metric = AnswerRelevance()
+
+# Score a trace
+trace = client.trace(
+    name="rag-query",
+    input={"query": "What is the capital of France?"},
+    output={"answer": "Paris is the capital of France."},
+)
+
+# Calculate and log automated scores
+hallucination_score = hallucination_metric.score(
+    input=trace.input["query"],
+    output=trace.output["answer"],
+    context=["France is a country in Europe. Paris is its capital."],
+)
+
+relevance_score = relevance_metric.score(
+    input=trace.input["query"],
+    output=trace.output["answer"],
+)
+
+# Log both scores
+trace.log_feedback_score(
+    name="hallucination",
+    value=hallucination_score.value,
+    reason=hallucination_score.reason,
+)
+
+trace.log_feedback_score(
+    name="relevance",
+    value=relevance_score.value,
+    reason=relevance_score.reason,
+)
+
+trace.end()
+client.end()
+```
+
+### Human Feedback Scores
+
+Scores from human reviewers or annotators:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# After human review, log the feedback
+client.log_traces_feedback_scores([
+    {
+        "id": "trace_id_123",
+        "name": "accuracy",
+        "value": 0.9,
+        "reason": "Answer is correct but could be more detailed",
+        "category_name": "human_review",
+    },
+    {
+        "id": "trace_id_123",
+        "name": "helpfulness",
+        "value": 0.85,
+        "reason": "Helpful response, addresses the question",
+        "category_name": "human_review",
+    },
+])
+
+client.end()
+```
+
+### User Feedback Scores
+
+Scores from end-user interactions (thumbs up/down, ratings, etc.):
+
+```python
+import opik
+
+client = opik.Opik()
+
+def handle_user_feedback(trace_id: str, rating: int, feedback_text: str = None):
+    """Handle user feedback from your application."""
+    
+    # Convert rating (1-5 stars) to normalized score (0-1)
+    normalized_score = rating / 5.0
+    
+    client.log_traces_feedback_scores([
+        {
+            "id": trace_id,
+            "name": "user_satisfaction",
+            "value": normalized_score,
+            "reason": feedback_text,
+            "category_name": "user_feedback",
+        }
+    ])
+    
+    client.end()
+
+# Example usage
+handle_user_feedback(
+    trace_id="trace_id_456",
+    rating=4,
+    feedback_text="Good answer, very helpful!",
+)
+```
+
+## Logging Feedback Scores
+
+### Logging to Traces
+
+```python
+import opik
+
+client = opik.Opik(project_name="production-app")
+
+# Create and complete a trace
+trace = client.trace(
+    name="customer-support",
+    input={"question": "How do I reset my password?"},
+    tags=["support", "production"],
+)
+
+trace.update(output={"answer": "You can reset your password by..."})
+trace.end()
+
+# Log feedback score
+trace.log_feedback_score(
+    name="accuracy",
+    value=0.95,
+    category_name="automated",
+    reason="Answer is accurate and complete",
+)
+
+client.end()
+```
+
+### Logging to Spans
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(name="multi-step-task")
+
+# Create a span for a specific step
+span = trace.span(
+    name="retrieval-step",
+    type="retriever",
+    input={"query": "machine learning"},
+)
+
+span.update(
+    output={"documents": ["doc1", "doc2", "doc3"]},
+)
+span.end()
+
+# Log feedback score to the span
+span.log_feedback_score(
+    name="retrieval_quality",
+    value=0.88,
+    reason="Retrieved relevant documents",
+)
+
+trace.end()
+client.end()
+```
+
+### Batch Logging
+
+For efficiency, log multiple scores at once:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Log multiple feedback scores in one call
+scores = [
+    {"id": "trace_1", "name": "accuracy", "value": 0.92},
+    {"id": "trace_2", "name": "accuracy", "value": 0.87},
+    {"id": "trace_3", "name": "accuracy", "value": 0.95},
+    {"id": "trace_1", "name": "relevance", "value": 0.89},
+    {"id": "trace_2", "name": "relevance", "value": 0.91},
+]
+
+client.log_traces_feedback_scores(scores=scores)
+client.end()
+```
+
+### Logging to Spans (Batch)
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Batch log span feedback scores
+span_scores = [
+    {"id": "span_1", "name": "toxicity", "value": 0.0, "reason": "Clean output"},
+    {"id": "span_2", "name": "toxicity", "value": 0.5, "reason": "Some concerning language"},
+    {"id": "span_1", "name": "truthfulness", "value": 1.0, "reason": "Factually accurate"},
+]
+
+client.log_spans_feedback_scores(scores=span_scores)
+client.end()
+```
+
+## Feedback Score Schema
+
+Each feedback score consists of:
+
+<Tabs>
+  <Tab title="Required Fields">
+    - **id** - The trace or span ID to attach the score to
+    - **name** - The metric name (e.g., "accuracy", "relevance")
+    - **value** - The score value (typically 0-1 for normalized scores)
+  </Tab>
+  <Tab title="Optional Fields">
+    - **reason** - Explanation for the score (recommended for transparency)
+    - **category_name** - Category for grouping (e.g., "automated", "human_review", "user_feedback")
+  </Tab>
+</Tabs>
+
+```python
+feedback_score = {
+    "id": "trace_uuid",           # Required: UUID of trace or span
+    "name": "accuracy",           # Required: metric name
+    "value": 0.95,                # Required: score value (0-1)
+    "reason": "Well formatted",   # Optional: explanation
+    "category_name": "automated", # Optional: score category
+}
+```
+
+## Querying Feedback Scores
+
+### Search Traces by Feedback Scores
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Find high-quality traces
+high_quality = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy > 0.9',
+    max_results=100,
+)
+
+# Find traces with low relevance
+low_relevance = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.relevance < 0.5',
+)
+
+# Find traces missing a specific score
+unscored = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy is_empty',
+)
+
+# Complex query
+problematic = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy < 0.7 AND feedback_scores.user_satisfaction < 0.6',
+)
+```
+
+### Aggregate Feedback Scores
+
+```python
+import opik
+from collections import defaultdict
+
+client = opik.Opik()
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy is_not_empty',
+    max_results=1000,
+)
+
+# Aggregate scores by metric name
+scores_by_metric = defaultdict(list)
+
+for trace in traces:
+    if hasattr(trace, 'feedback_scores') and trace.feedback_scores:
+        for score in trace.feedback_scores:
+            scores_by_metric[score.name].append(score.value)
+
+# Calculate statistics
+for metric_name, values in scores_by_metric.items():
+    avg = sum(values) / len(values)
+    min_val = min(values)
+    max_val = max(values)
+    count = len(values)
+    
+    print(f"{metric_name}:")
+    print(f"  Average: {avg:.3f}")
+    print(f"  Range: {min_val:.3f} - {max_val:.3f}")
+    print(f"  Count: {count}")
+```
+
+## Common Feedback Score Patterns
+
+### Multi-Metric Evaluation
+
+Evaluate traces with multiple complementary metrics:
+
+```python
+from opik.evaluation.metrics import (
+    Hallucination,
+    AnswerRelevance,
+    Moderation,
+)
+import opik
+
+client = opik.Opik()
+
+# Define metrics
+metrics = {
+    'hallucination': Hallucination(),
+    'relevance': AnswerRelevance(),
+    'moderation': Moderation(),
+}
+
+# Get recent traces
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=100,
+)
+
+# Score each trace with all metrics
+for trace in traces:
+    scores_to_log = []
+    
+    for metric_name, metric in metrics.items():
+        try:
+            score = metric.score(
+                input=trace.input.get('query', ''),
+                output=trace.output.get('answer', ''),
+                context=trace.metadata.get('context', []) if trace.metadata else [],
+            )
+            
+            scores_to_log.append({
+                "id": trace.id,
+                "name": metric_name,
+                "value": score.value,
+                "reason": score.reason,
+            })
+        except Exception as e:
+            print(f"Error scoring {trace.id} with {metric_name}: {e}")
+    
+    if scores_to_log:
+        client.log_traces_feedback_scores(scores=scores_to_log)
+
+client.end()
+```
+
+### Trend Analysis
+
+Track how feedback scores change over time:
+
+```python
+import opik
+from datetime import datetime, timedelta
+from collections import defaultdict
+
+client = opik.Opik()
+
+# Get traces for the last 30 days
+start_date = (datetime.now() - timedelta(days=30)).isoformat() + "Z"
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{start_date}" AND feedback_scores.accuracy is_not_empty',
+    max_results=10000,
+)
+
+# Group by week
+weekly_scores = defaultdict(list)
+
+for trace in traces:
+    if trace.start_time and hasattr(trace, 'feedback_scores'):
+        week = trace.start_time.isocalendar()[1]  # ISO week number
+        
+        for score in trace.feedback_scores:
+            if score.name == 'accuracy':
+                weekly_scores[week].append(score.value)
+
+# Display weekly trends
+for week in sorted(weekly_scores.keys()):
+    scores = weekly_scores[week]
+    avg = sum(scores) / len(scores)
+    print(f"Week {week}: {avg:.3f} (n={len(scores)})")
+```
+
+### Model Comparison
+
+Compare feedback scores across different models:
+
+```python
+import opik
+from collections import defaultdict
+
+client = opik.Opik()
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.accuracy is_not_empty',
+    max_results=5000,
+)
+
+# Group scores by model
+model_scores = defaultdict(lambda: defaultdict(list))
+
+for trace in traces:
+    if trace.model and hasattr(trace, 'feedback_scores'):
+        for score in trace.feedback_scores:
+            model_scores[trace.model][score.name].append(score.value)
+
+# Compare models
+for model, scores_dict in model_scores.items():
+    print(f"\n{model}:")
+    for metric, values in scores_dict.items():
+        avg = sum(values) / len(values)
+        print(f"  {metric}: {avg:.3f} (n={len(values)})")
+```
+
+### Quality Thresholds
+
+Identify traces that don't meet quality standards:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Define quality thresholds
+THRESHOLDS = {
+    'accuracy': 0.8,
+    'relevance': 0.7,
+    'user_satisfaction': 0.6,
+}
+
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=1000,
+)
+
+low_quality_traces = []
+
+for trace in traces:
+    if not hasattr(trace, 'feedback_scores') or not trace.feedback_scores:
+        continue
+    
+    violations = []
+    for score in trace.feedback_scores:
+        threshold = THRESHOLDS.get(score.name)
+        if threshold and score.value < threshold:
+            violations.append(f"{score.name}: {score.value:.2f} < {threshold}")
+    
+    if violations:
+        low_quality_traces.append({
+            'id': trace.id,
+            'name': trace.name,
+            'violations': violations,
+        })
+
+print(f"Found {len(low_quality_traces)} traces below quality thresholds")
+for trace in low_quality_traces[:10]:
+    print(f"  {trace['name']}: {', '.join(trace['violations'])}")
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Consistent Naming">
+    Standardize metric names across your organization (e.g., always use "accuracy" not "acc" or "correct")
+  </Step>
+  <Step title="Normalize Score Values">
+    Use 0-1 range for scores to enable easy comparison across different metrics
+  </Step>
+  <Step title="Always Provide Reasons">
+    Include reasons with scores for transparency and debugging, especially for automated metrics
+  </Step>
+  <Step title="Use Categories">
+    Categorize scores by source (automated, human, user) to analyze different feedback types separately
+  </Step>
+  <Step title="Validate Automated Metrics">
+    Regularly compare automated scores with human judgment to ensure metric quality
+  </Step>
+</Steps>
+
+<Warning>
+Feedback scores are immutable once logged. If you need to correct a score, log a new score with an updated value rather than attempting to modify the existing one.
+</Warning>
+
+## Score Interpretation Guidelines
+
+### LLM-as-a-Judge Scores
+
+- **0.9 - 1.0** - Excellent quality, meets all criteria
+- **0.7 - 0.9** - Good quality, minor issues
+- **0.5 - 0.7** - Acceptable, some concerns
+- **0.3 - 0.5** - Poor quality, needs improvement
+- **0.0 - 0.3** - Very poor, significant issues
+
+### User Satisfaction Scores
+
+```python
+# Convert common rating scales to normalized scores
+
+def stars_to_score(stars: int) -> float:
+    """Convert 1-5 star rating to 0-1 score."""
+    return stars / 5.0
+
+def thumbs_to_score(thumbs_up: bool) -> float:
+    """Convert thumbs up/down to 0-1 score."""
+    return 1.0 if thumbs_up else 0.0
+
+def nps_to_score(nps: int) -> float:
+    """Convert Net Promoter Score (0-10) to 0-1 score."""
+    return nps / 10.0
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Online Evaluation" icon="clipboard-check" href="/production/online-evaluation">
+    Automate feedback scoring with online evaluation rules
+  </Card>
+  <Card title="Metrics Overview" icon="calculator" href="/evaluation/metrics/overview">
+    Explore all available LLM-as-a-Judge metrics
+  </Card>
+  <Card title="Dashboards" icon="chart-line" href="/production/dashboards">
+    Visualize feedback scores in production dashboards
+  </Card>
+  <Card title="Annotation Queues" icon="list-check" href="/tracing/annotate-traces">
+    Set up human review workflows for traces
+  </Card>
+</CardGroup>

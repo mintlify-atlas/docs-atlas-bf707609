@@ -1,0 +1,631 @@
+---
+title: "Datasets"
+description: "Create, manage, and version datasets for LLM evaluation"
+---
+
+Datasets are collections of test cases used to evaluate your LLM applications. Opik provides a comprehensive dataset management system with versioning, filtering, and export capabilities.
+
+## Creating Datasets
+
+### Using the Opik Client
+
+Create a dataset using the Opik client:
+
+```python
+from opik import Opik
+
+client = Opik()
+
+# Create a new dataset
+dataset = client.create_dataset(
+    name="qa-dataset",
+    description="Question answering evaluation dataset"
+)
+```
+
+### Get or Create Pattern
+
+Get an existing dataset or create it if it doesn't exist:
+
+```python
+dataset = client.get_or_create_dataset(
+    name="my-dataset",
+    description="My evaluation dataset"
+)
+```
+
+### Get Existing Dataset
+
+Retrieve an existing dataset:
+
+```python
+dataset = client.get_dataset(name="my-dataset")
+```
+
+## Adding Items to Datasets
+
+### Insert Method
+
+Add items using the `insert()` method:
+
+```python
+dataset.insert([
+    {
+        "input": {"question": "What is AI?"},
+        "expected_output": "Artificial Intelligence is..."
+    },
+    {
+        "input": {"question": "What is ML?"},
+        "expected_output": "Machine Learning is..."
+    }
+])
+```
+
+### Insert from JSON
+
+Insert items from a JSON string:
+
+```python
+import json
+
+json_data = '''
+[
+    {
+        "input": {"question": "What is Python?"},
+        "expected_output": "Python is a programming language"
+    },
+    {
+        "input": {"question": "What is Java?"},
+        "expected_output": "Java is a programming language"
+    }
+]
+'''
+
+dataset.insert_from_json(
+    json_array=json_data,
+    keys_mapping={"input": "input", "expected_output": "expected_output"}
+)
+```
+
+### Insert from Pandas
+
+Insert items from a pandas DataFrame:
+
+```python
+import pandas as pd
+
+df = pd.DataFrame({
+    "question": ["What is AI?", "What is ML?"],
+    "answer": ["AI is...", "ML is..."]
+})
+
+dataset.insert_from_pandas(
+    dataframe=df,
+    keys_mapping={
+        "input": "question",
+        "expected_output": "answer"
+    }
+)
+```
+
+### Keys Mapping
+
+The `keys_mapping` parameter maps your data columns to dataset fields:
+
+```python
+keys_mapping = {
+    "input": "user_question",      # Maps user_question -> input
+    "expected_output": "answer",    # Maps answer -> expected_output
+    "metadata": "meta"             # Maps meta -> metadata
+}
+```
+
+## Dataset Item Structure
+
+Each dataset item can contain:
+
+<ParamField path="input" type="dict" required>
+  The input data for your task (e.g., user question, prompt)
+</ParamField>
+
+<ParamField path="expected_output" type="any">
+  The expected output for comparison during evaluation
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Additional metadata (e.g., category, difficulty, tags)
+</ParamField>
+
+<ParamField path="tags" type="list[string]">
+  Tags for filtering and organization
+</ParamField>
+
+<ParamField path="trace_id" type="string">
+  Link to a specific trace
+</ParamField>
+
+<ParamField path="span_id" type="string">
+  Link to a specific span
+</ParamField>
+
+Example with all fields:
+
+```python
+dataset.insert([
+    {
+        "input": {"question": "What is AI?", "context": ["..."]},
+        "expected_output": "Artificial Intelligence is...",
+        "metadata": {"category": "technical", "difficulty": "easy"},
+        "tags": ["qa", "beginner"],
+        "trace_id": "trace-uuid",  # Optional: link to a trace
+        "span_id": "span-uuid"     # Optional: link to a span
+    }
+])
+```
+
+## Retrieving Dataset Items
+
+### Get All Items
+
+Retrieve all items as a list:
+
+```python
+items = dataset.get_items()
+
+for item in items:
+    print(item["input"])
+    print(item["expected_output"])
+```
+
+### Get Limited Items
+
+Retrieve a specific number of items:
+
+```python
+items = dataset.get_items(nb_samples=10)
+```
+
+### Filter Items
+
+Use OQL (Opik Query Language) to filter items:
+
+```python
+items = dataset.get_items(
+    filter_string='tags contains "important"'
+)
+```
+
+### Filter Examples
+
+<CodeGroup>
+```python By Tags
+items = dataset.get_items(
+    filter_string='tags contains "production"'
+)
+```
+
+```python By Data Field
+items = dataset.get_items(
+    filter_string='data.category = "technical"'
+)
+```
+
+```python By Date
+items = dataset.get_items(
+    filter_string='created_at >= "2024-01-01T00:00:00Z"'
+)
+```
+
+```python Combined Filters
+items = dataset.get_items(
+    filter_string='tags contains "test" and data.difficulty = "hard"'
+)
+```
+</CodeGroup>
+
+### Supported Filter Columns
+
+<ResponseField name="id" type="string">
+  Dataset item unique identifier
+</ResponseField>
+
+<ResponseField name="source" type="string">
+  Source of the item (e.g., "manual", "trace")
+</ResponseField>
+
+<ResponseField name="trace_id" type="string">
+  Associated trace ID
+</ResponseField>
+
+<ResponseField name="span_id" type="string">
+  Associated span ID
+</ResponseField>
+
+<ResponseField name="data" type="dict">
+  Dataset item data (use dot notation: `data.field_name`)
+</ResponseField>
+
+<ResponseField name="tags" type="list">
+  Tags (use `contains` operator)
+</ResponseField>
+
+<ResponseField name="created_at" type="datetime">
+  Creation timestamp (ISO 8601 format)
+</ResponseField>
+
+<ResponseField name="last_updated_at" type="datetime">
+  Last update timestamp
+</ResponseField>
+
+<ResponseField name="created_by" type="string">
+  User who created the item
+</ResponseField>
+
+<ResponseField name="last_updated_by" type="string">
+  User who last updated the item
+</ResponseField>
+
+## Exporting Datasets
+
+### Export to Pandas
+
+Convert dataset to a pandas DataFrame:
+
+```python
+import pandas as pd
+
+df = dataset.to_pandas()
+print(df.head())
+```
+
+### Export to JSON
+
+Convert dataset to JSON string:
+
+```python
+json_string = dataset.to_json()
+print(json_string)
+```
+
+### Export to File
+
+Save dataset to a file:
+
+```python
+import pandas as pd
+
+# Export to CSV
+df = dataset.to_pandas()
+df.to_csv("dataset.csv", index=False)
+
+# Export to JSON file
+import json
+json_string = dataset.to_json()
+with open("dataset.json", "w") as f:
+    f.write(json_string)
+```
+
+## Dataset Versioning
+
+### Get Current Version
+
+Get the current/latest version of a dataset:
+
+```python
+dataset = client.get_dataset(name="my-dataset")
+# This returns the current state
+```
+
+### Get Specific Version
+
+Retrieve a specific dataset version:
+
+```python
+version = dataset.get_dataset_version(version_name="v1.0")
+
+# Use the version like a dataset
+items = version.get_items()
+```
+
+### DatasetVersion Properties
+
+<ResponseField name="dataset_name" type="string">
+  Name of the dataset this version belongs to
+</ResponseField>
+
+<ResponseField name="dataset_id" type="string">
+  Unique identifier of the parent dataset
+</ResponseField>
+
+<ResponseField name="version_id" type="string">
+  Unique identifier of this specific version
+</ResponseField>
+
+<ResponseField name="dataset_items_count" type="int">
+  Total number of items in this version
+</ResponseField>
+
+## Dataset Properties
+
+### Basic Properties
+
+```python
+print(dataset.name)                    # Dataset name
+print(dataset.id)                      # Dataset ID
+print(dataset.dataset_items_count)     # Number of items
+print(dataset.description)             # Description
+```
+
+<ResponseField name="name" type="string">
+  The name of the dataset
+</ResponseField>
+
+<ResponseField name="id" type="string">
+  Unique identifier for the dataset
+</ResponseField>
+
+<ResponseField name="dataset_items_count" type="int">
+  Total number of items in the dataset (may be None if not yet calculated)
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  Description of the dataset
+</ResponseField>
+
+## Updating Dataset Items
+
+### Update Metadata
+
+Update specific items:
+
+```python
+# Get items
+items = dataset.get_items(nb_samples=1)
+item_id = items[0]["id"]
+
+# Update via re-insertion with the same ID
+dataset.insert([
+    {
+        "id": item_id,
+        "input": {"question": "Updated question"},
+        "expected_output": "Updated answer",
+        "tags": ["updated"]
+    }
+])
+```
+
+## Complete Example
+
+Here's a complete example of working with datasets:
+
+```python
+from opik import Opik
+import pandas as pd
+
+# Create client
+client = Opik()
+
+# Create or get dataset
+dataset = client.get_or_create_dataset(
+    name="customer-support-qa",
+    description="Customer support question answering dataset"
+)
+
+# Add items from various sources
+
+# 1. Direct insertion
+dataset.insert([
+    {
+        "input": {
+            "question": "How do I reset my password?",
+            "category": "account"
+        },
+        "expected_output": "To reset your password...",
+        "metadata": {"difficulty": "easy", "priority": "high"},
+        "tags": ["account", "password"]
+    },
+    {
+        "input": {
+            "question": "What are your refund policies?",
+            "category": "billing"
+        },
+        "expected_output": "Our refund policy...",
+        "metadata": {"difficulty": "medium", "priority": "high"},
+        "tags": ["billing", "refund"]
+    }
+])
+
+# 2. From DataFrame
+df = pd.DataFrame({
+    "user_question": [
+        "How do I upgrade my plan?",
+        "Is there a mobile app?"
+    ],
+    "answer": [
+        "To upgrade your plan...",
+        "Yes, we have mobile apps..."
+    ],
+    "category": ["billing", "product"]
+})
+
+dataset.insert_from_pandas(
+    dataframe=df,
+    keys_mapping={
+        "input": "user_question",
+        "expected_output": "answer",
+        "metadata": "category"
+    }
+)
+
+# 3. From JSON
+json_data = '''
+[
+    {
+        "question": "How do I cancel my subscription?",
+        "answer": "To cancel your subscription...",
+        "topic": "billing"
+    }
+]
+'''
+
+dataset.insert_from_json(
+    json_array=json_data,
+    keys_mapping={
+        "input": "question",
+        "expected_output": "answer"
+    }
+)
+
+print(f"Total items: {dataset.dataset_items_count}")
+
+# Retrieve and filter items
+
+# Get all items
+all_items = dataset.get_items()
+print(f"All items: {len(all_items)}")
+
+# Get billing-related items
+billing_items = dataset.get_items(
+    filter_string='tags contains "billing"'
+)
+print(f"Billing items: {len(billing_items)}")
+
+# Get high-priority items
+high_priority = dataset.get_items(
+    filter_string='data.metadata.priority = "high"'
+)
+print(f"High priority items: {len(high_priority)}")
+
+# Export dataset
+
+# To pandas
+df_export = dataset.to_pandas()
+df_export.to_csv("dataset_export.csv", index=False)
+
+# To JSON
+json_export = dataset.to_json()
+with open("dataset_export.json", "w") as f:
+    f.write(json_export)
+
+print("Dataset created and exported successfully!")
+```
+
+## Using Datasets in Evaluation
+
+Datasets are primarily used with the `evaluate()` function:
+
+```python
+from opik import evaluate, track
+from opik.evaluation.metrics import Hallucination
+
+# Define your task
+@track
+def qa_task(item: dict) -> dict:
+    question = item["input"]["question"]
+    # Your LLM logic
+    answer = generate_answer(question)
+    return {
+        "output": answer,
+        "reference": item.get("expected_output")
+    }
+
+# Run evaluation
+results = evaluate(
+    dataset=dataset,
+    task=qa_task,
+    scoring_metrics=[Hallucination()],
+    experiment_name="qa-experiment-v1"
+)
+
+print(f"Evaluated {len(results.test_results)} items")
+```
+
+## Creating Datasets from Traces
+
+Convert production traces into dataset items:
+
+```python
+from opik import Opik
+
+client = Opik()
+
+# Search for successful traces
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='tags contains "successful"'
+)
+
+# Create dataset
+dataset = client.create_dataset(name="production-dataset")
+
+# Add traces as dataset items
+for trace in traces:
+    dataset.insert([
+        {
+            "input": trace.input,
+            "expected_output": trace.output,
+            "trace_id": trace.id,
+            "tags": ["from-production"]
+        }
+    ])
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive names">
+    Name datasets clearly to indicate their purpose:
+    ```python
+    dataset = client.create_dataset(
+        name="customer-support-qa-2024",
+        description="Customer support Q&A dataset for 2024 evaluation"
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Add metadata and tags">
+    Include metadata for filtering and analysis:
+    ```python
+    dataset.insert([{
+        "input": {"question": "..."},
+        "expected_output": "...",
+        "metadata": {"difficulty": "hard", "domain": "technical"},
+        "tags": ["production", "verified"]
+    }])
+    ```
+  </Accordion>
+  
+  <Accordion title="Start small, grow gradually">
+    Begin with a small, high-quality dataset:
+    ```python
+    # Start with 10-20 carefully curated items
+    # Expand based on evaluation insights
+    ```
+  </Accordion>
+  
+  <Accordion title="Version your datasets">
+    Use clear version names when working with dataset versions:
+    ```python
+    version = dataset.get_dataset_version(version_name="v1.0")
+    ```
+  </Accordion>
+  
+  <Accordion title="Export for backup">
+    Regularly export datasets for backup and sharing:
+    ```python
+    df = dataset.to_pandas()
+    df.to_csv(f"backup_{dataset.name}.csv")
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/python/evaluation">
+    Learn how to evaluate using your datasets
+  </Card>
+  <Card title="Experiments" icon="flask" href="/sdk/python/experiments">
+    Run experiments and compare results
+  </Card>
+</CardGroup>

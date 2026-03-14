@@ -1,0 +1,383 @@
+---
+title: "Agent Optimization"
+description: "Optimize agents and prompts with tool calling capabilities"
+---
+
+# Agent Optimization
+
+The Opik Optimizer SDK supports optimizing agents that use tools and function calling. This guide covers how to work with agents, customize tool configurations, and optimize both prompts and tools.
+
+## Overview
+
+Agent optimization involves three key concepts:
+
+1. **Prompt Optimization**: Refining the text of your prompts
+2. **Tool Use**: Enabling agents to call functions during evaluation
+3. **Tool Optimization**: Improving tool descriptions and parameter schemas
+
+<Note>
+  These three concepts are independent. You can optimize prompts while using tools, or optimize the tools themselves.
+</Note>
+
+## ChatPrompt with Tools
+
+The `ChatPrompt` class is the foundation for agent optimization. It supports various tool configurations:
+
+### Basic Function Calling
+
+```python
+import opik
+from opik_optimizer import ChatPrompt
+from opik_optimizer.utils.tools.wikipedia import search_wikipedia
+
+prompt = ChatPrompt(
+    system="You are a helpful assistant. Use tools when needed.",
+    user="{question}",
+    tools=[
+        {
+            "type": "function",
+            "function": {
+                "name": "search_wikipedia",
+                "description": "Search Wikipedia for information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "Search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+    ],
+    function_map={
+        "search_wikipedia": opik.track(type="tool")(
+            lambda query: search_wikipedia(query)
+        )
+    }
+)
+```
+
+### Key Components
+
+<AccordionGroup>
+  <Accordion title="tools">
+    A list of tool schemas following the OpenAI function calling format. Defines what tools are available and their parameters.
+  </Accordion>
+  <Accordion title="function_map">
+    Maps tool names to actual Python functions. These functions are called when the LLM invokes a tool.
+    
+    Use `opik.track(type="tool")` to track tool invocations in Opik.
+  </Accordion>
+  <Accordion title="model_parameters">
+    Optional parameters for LLM calls. Set `allow_tool_use: False` to disable tool calling during evaluation.
+  </Accordion>
+</AccordionGroup>
+
+## Prompt vs Tool Optimization
+
+### Prompt Optimization
+
+Controls which prompt roles can be edited during optimization:
+
+```python
+from opik_optimizer import MetaPromptOptimizer
+
+optimizer = MetaPromptOptimizer(model="gpt-4o-mini")
+
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    optimize_prompts=["user"],  # Only optimize user messages
+    n_samples=100
+)
+```
+
+**Options:**
+- `["user"]` - Only optimize user messages (default for most optimizers)
+- `["system", "user"]` - Optimize both system and user messages
+- `["assistant"]` - Optimize specific assistant messages
+
+### Tool Optimization
+
+Updates tool descriptions and parameter descriptions (not schemas or tool names):
+
+```python
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    optimize_tools=True,  # Optimize all tools (up to default limit)
+    n_samples=100
+)
+```
+
+**Selective Tool Optimization:**
+
+```python
+# Optimize specific tools only
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    optimize_tools={
+        "search_wikipedia": True,
+        "calculate": False  # Don't optimize this tool
+    },
+    n_samples=100
+)
+```
+
+<Warning>
+  Tool optimization is limited by `DEFAULT_TOOL_CALL_MAX_TOOLS_TO_OPTIMIZE` (default: 3) to avoid large optimization tasks. Use selective optimization for more control.
+</Warning>
+
+### Algorithm Support
+
+Not all optimizers support tool optimization:
+
+| Optimizer | Prompt Optimization | Tool Optimization | Multimodal |
+|-----------|--------------------:|------------------:|-----------:|
+| **EvolutionaryOptimizer** | ✅ | ✅ | ✅ |
+| **FewShotBayesianOptimizer** | ✅ | ❌ | ✅ |
+| **MetaPromptOptimizer** | ✅ | ✅ | ✅ |
+| **GepaOptimizer** | ✅ | ❌ | ✅ |
+| **HierarchicalReflectiveOptimizer** | ✅ | ✅ | ✅ |
+| **ParameterOptimizer** | ❌ | ❌ | ✅ |
+
+Check optimizer capabilities at runtime:
+
+```python
+optimizer = MetaPromptOptimizer(model="gpt-4o-mini")
+print(optimizer.supports_prompt_optimization)  # True
+print(optimizer.supports_tool_optimization)    # True
+print(optimizer.supports_multimodal)           # True
+```
+
+## Agent Function Calling Example
+
+Here's a complete example optimizing an agent with Wikipedia search:
+
+```python
+import opik
+from opik.evaluation.metrics import LevenshteinRatio
+from opik_optimizer import EvolutionaryOptimizer, ChatPrompt
+from opik_optimizer.datasets import hotpot
+from opik_optimizer.utils.tools.wikipedia import search_wikipedia
+
+# Load dataset
+dataset = hotpot(split="train", count=50)
+
+# Define prompt with tools
+prompt = ChatPrompt(
+    system="Answer questions using the Wikipedia search tool.",
+    user="{question}",
+    tools=[
+        {
+            "type": "function",
+            "function": {
+                "name": "search_wikipedia",
+                "description": "Search Wikipedia for information.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": {
+                            "type": "string",
+                            "description": "The search query"
+                        }
+                    },
+                    "required": ["query"]
+                }
+            }
+        }
+    ],
+    function_map={
+        "search_wikipedia": opik.track(type="tool")(
+            lambda query: search_wikipedia(query, search_type="api")
+        )
+    }
+)
+
+# Create optimizer
+optimizer = EvolutionaryOptimizer(
+    model="gpt-4o-mini",
+    population_size=10,
+    num_generations=3,
+    enable_moo=False,
+    verbose=1
+)
+
+# Define metric
+def levenshtein_ratio(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"],
+        output=llm_output
+    )
+
+# Optimize (agent will use tools during evaluation)
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=levenshtein_ratio,
+    n_samples=20,
+    max_trials=5
+)
+
+result.display()
+```
+
+## MCP (Model Context Protocol) Support
+
+The optimizer supports MCP tools for both local and remote servers:
+
+### Remote MCP Server
+
+```python
+prompt = ChatPrompt(
+    system="Use the docs tool when needed.",
+    user="{user_query}",
+    tools=[
+        {
+            "type": "mcp",
+            "server_label": "context7",
+            "server_url": "https://mcp.context7.com/mcp",
+            "headers": {"CONTEXT7_API_KEY": "$CONTEXT7_API_KEY"},
+            "allowed_tools": ["resolve-library-id", "query-docs"]
+        }
+    ]
+)
+```
+
+### Local MCP Server
+
+```python
+prompt = ChatPrompt(
+    system="Use MCP tools when needed.",
+    user="{user_query}",
+    tools=[
+        {
+            "type": "mcp",
+            "server_label": "local_docs",
+            "command": "npx",
+            "args": ["-y", "@upstash/context7-mcp"],
+            "env": {},
+            "allowed_tools": ["get-library-docs"]
+        }
+    ]
+)
+```
+
+### Cursor MCP Config
+
+You can also pass Cursor-style MCP configurations:
+
+```python
+cursor_config = {
+    "mcpServers": {
+        "context7": {
+            "url": "https://mcp.context7.com/mcp",
+            "headers": {"CONTEXT7_API_KEY": "YOUR_API_KEY"}
+        }
+    }
+}
+
+prompt = ChatPrompt(
+    system="Use MCP tools",
+    user="{user_query}",
+    tools=cursor_config
+)
+```
+
+## Custom Agent Classes
+
+For advanced use cases, you can create custom agent implementations:
+
+```python
+from opik_optimizer.agents import OptimizableAgent
+
+class CustomAgent(OptimizableAgent):
+    """Custom agent with specialized behavior."""
+    
+    def invoke_agent(
+        self,
+        prompt,
+        dataset_item,
+        model=None,
+        model_kwargs=None,
+        **kwargs
+    ):
+        """Invoke the agent with custom logic."""
+        # Your custom implementation
+        # Must return a string output
+        pass
+
+# Use with optimizer
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    agent_class=CustomAgent
+)
+```
+
+<Info>
+  See the [OptimizableAgent source](https://github.com/comet-ml/opik/blob/main/sdks/opik_optimizer/src/opik_optimizer/agents/optimizable_agent.py) for the full interface.
+</Info>
+
+## Tool Call Debugging
+
+Enable verbose tool calling logs:
+
+```bash
+export OPIK_OPTIMIZER_LOG_LEVEL=DEBUG
+```
+
+This will log tool names and arguments during optimization.
+
+## Advanced: Prompt Segments
+
+For fine-grained control over which parts of a prompt get optimized:
+
+```python
+from opik_optimizer import ChatPrompt
+from opik_optimizer.utils import prompt_segments
+
+prompt = ChatPrompt(
+    system="You are a reliable assistant.",
+    messages=[
+        {"role": "assistant", "content": "MCP instructions here."},
+        {"role": "user", "content": "{user_query}"}
+    ]
+)
+
+# Inspect segments
+segments = prompt_segments.extract_prompt_segments(prompt)
+for segment in segments:
+    print(segment.segment_id, segment.role, segment.content)
+
+# Update only specific segments
+updates = {"message:1": "User question: {user_query}"}
+updated_prompt = prompt_segments.apply_segment_updates(prompt, updates)
+```
+
+Segment IDs are stable: `system`, `user`, `message:0`, `message:1`, `tool:<name>`.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Algorithms" icon="chart-line" href="/sdk/optimizer/algorithms">
+    Explore all optimization algorithms in detail
+  </Card>
+  <Card title="API Reference" icon="book" href="/sdk/optimizer/overview">
+    View the ChatPrompt API reference
+  </Card>
+  <Card title="Examples" icon="code" href="https://github.com/comet-ml/opik/tree/main/sdks/opik_optimizer/scripts">
+    Browse code examples on GitHub
+  </Card>
+  <Card title="Tool Optimization Guide" icon="wrench" href="https://www.comet.com/docs/opik/agent_optimization/algorithms/tool_optimization">
+    Read the comprehensive tool optimization guide
+  </Card>
+</CardGroup>

@@ -1,0 +1,349 @@
+---
+title: OpenTelemetry
+description: Integrate any OpenTelemetry-compatible framework with Opik for distributed tracing and comprehensive observability.
+---
+
+Opik provides native support for OpenTelemetry (OTel), allowing you to instrument your ML/AI applications with distributed tracing across any language or framework that supports OpenTelemetry.
+
+## Overview
+
+OpenTelemetry integration extends Opik's language support beyond Python and TypeScript to include:
+
+- C++
+- .NET
+- Erlang/Elixir
+- Go
+- Java
+- JavaScript
+- PHP
+- Python
+- Ruby
+- Rust
+- Swift
+
+<Note>
+  OpenTelemetry integration in Opik currently supports HTTP transport. We're actively working on expanding the feature set.
+</Note>
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Multi-Language Support" icon="globe">
+    Use any OpenTelemetry SDK in any language
+  </Card>
+  <Card title="Standard Protocol" icon="network-wired">
+    Leverage industry-standard tracing protocol
+  </Card>
+  <Card title="Flexible Integration" icon="puzzle-piece">
+    Works with existing OpenTelemetry instrumentation
+  </Card>
+  <Card title="Distributed Tracing" icon="diagram-project">
+    Track complex multi-service architectures
+  </Card>
+</CardGroup>
+
+## Configuration
+
+### Endpoint Configuration
+
+<Tabs>
+  <Tab title="Opik Cloud">
+    ```bash
+    export OTEL_EXPORTER_OTLP_ENDPOINT="https://www.comet.com/opik/api/v1/private/otel"
+    export OTEL_EXPORTER_OTLP_HEADERS="Authorization=<your-api-key>,projectName=<your-project-name>,Comet-Workspace=<your-workspace-name>"
+    ```
+  </Tab>
+  
+  <Tab title="Self-hosted">
+    ```bash
+    export OTEL_EXPORTER_OTLP_ENDPOINT="http://localhost:5173/api/v1/private/otel"
+    ```
+  </Tab>
+  
+  <Tab title="Enterprise">
+    ```bash
+    export OTEL_EXPORTER_OTLP_ENDPOINT="https://<comet-deployment-url>/opik/api/v1/private/otel"
+    export OTEL_EXPORTER_OTLP_HEADERS="Authorization=<your-api-key>,projectName=<your-project-name>,Comet-Workspace=<your-workspace-name>"
+    ```
+  </Tab>
+</Tabs>
+
+### Signal-Specific Endpoint
+
+For signal-specific configuration (traces, metrics, logs):
+
+```bash
+export OTEL_EXPORTER_OTLP_TRACES_ENDPOINT="http://<YOUR-OPIK-INSTANCE>/api/v1/private/otel/v1/traces"
+```
+
+### Disable Metrics Exporter
+
+Opik currently supports traces only:
+
+```bash
+export OTEL_METRICS_EXPORTER=none
+```
+
+## Python Integration
+
+### Basic Setup
+
+```python
+from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+# Configuration for Comet-hosted installations
+OPIK_ENDPOINT = "https://<COMET-SERVER>/api/v1/private/otel/v1/traces"
+API_KEY = "<your-api-key>"
+PROJECT_NAME = "<your-project-name>"
+WORKSPACE_NAME = "<your-workspace-name>"
+
+# Initialize the trace provider
+provider = TracerProvider()
+processor = BatchSpanProcessor(
+    OTLPSpanExporter(
+        endpoint=OPIK_ENDPOINT,
+        headers={
+            "Authorization": API_KEY,
+            "projectName": PROJECT_NAME,
+            "Comet-Workspace": WORKSPACE_NAME
+        }
+    )
+)
+provider.add_span_processor(processor)
+trace.set_tracer_provider(provider)
+```
+
+### Instrumenting OpenAI
+
+Track OpenAI API calls with OpenTelemetry:
+
+```bash
+pip install opentelemetry-instrumentation-openai
+```
+
+```python
+from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+
+OpenAIInstrumentor().instrument()
+```
+
+### Creating Custom Spans
+
+```python
+from opentelemetry import trace
+
+tracer = trace.get_tracer(__name__)
+
+with tracer.start_as_current_span("my-operation") as span:
+    span.set_attribute("input", "user query")
+    # Your code here
+    span.set_attribute("output", "response")
+```
+
+## Ruby Integration
+
+### Basic Setup
+
+```ruby
+require 'opentelemetry/sdk'
+require 'opentelemetry/exporter/otlp'
+
+OpenTelemetry::SDK.configure do |c|
+  c.service_name = 'my-service'
+  c.use_all() # enables all instrumentation
+  c.add_span_processor(
+    OpenTelemetry::SDK::Trace::Export::BatchSpanProcessor.new(
+      OpenTelemetry::Exporter::OTLP::Exporter.new(
+        endpoint: 'http://localhost:5173/api/v1/private/otel/v1/traces',
+        headers: { 'projectName' => 'my-project' }
+      )
+    )
+  )
+end
+```
+
+## Java Integration
+
+### Maven Dependencies
+
+```xml
+<dependencies>
+  <dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-api</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-sdk</artifactId>
+  </dependency>
+  <dependency>
+    <groupId>io.opentelemetry</groupId>
+    <artifactId>opentelemetry-exporter-otlp</artifactId>
+  </dependency>
+</dependencies>
+```
+
+### Basic Setup
+
+```java
+import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
+import io.opentelemetry.sdk.trace.SdkTracerProvider;
+import io.opentelemetry.sdk.trace.export.BatchSpanProcessor;
+import io.opentelemetry.exporter.otlp.trace.OtlpGrpcSpanExporter;
+
+OtlpGrpcSpanExporter spanExporter = OtlpGrpcSpanExporter.builder()
+    .setEndpoint("http://localhost:5173/api/v1/private/otel")
+    .build();
+
+SdkTracerProvider tracerProvider = SdkTracerProvider.builder()
+    .addSpanProcessor(BatchSpanProcessor.builder(spanExporter).build())
+    .build();
+
+OpenTelemetry openTelemetry = OpenTelemetrySdk.builder()
+    .setTracerProvider(tracerProvider)
+    .build();
+```
+
+## Node.js/JavaScript Integration
+
+### Installation
+
+```bash
+npm install @opentelemetry/sdk-node @opentelemetry/exporter-trace-otlp-http
+```
+
+### Basic Setup
+
+```javascript
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-http');
+
+const sdk = new NodeSDK({
+  traceExporter: new OTLPTraceExporter({
+    url: 'http://localhost:5173/api/v1/private/otel/v1/traces',
+    headers: {
+      'projectName': 'my-project'
+    }
+  }),
+});
+
+sdk.start();
+```
+
+## Go Integration
+
+### Installation
+
+```bash
+go get go.opentelemetry.io/otel
+go get go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp
+```
+
+### Basic Setup
+
+```go
+import (
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+    "go.opentelemetry.io/otel/sdk/trace"
+)
+
+exporter, err := otlptracehttp.New(
+    context.Background(),
+    otlptracehttp.WithEndpoint("localhost:5173"),
+    otlptracehttp.WithURLPath("/api/v1/private/otel/v1/traces"),
+    otlptracehttp.WithHeaders(map[string]string{
+        "projectName": "my-project",
+    }),
+)
+
+tp := trace.NewTracerProvider(
+    trace.WithBatcher(exporter),
+)
+otel.SetTracerProvider(tp)
+```
+
+## Advanced Configuration
+
+### Custom Attributes
+
+Add custom attributes to spans:
+
+```python
+span.set_attribute("user.id", "user123")
+span.set_attribute("model.name", "gpt-4")
+span.set_attribute("tokens.total", 150)
+```
+
+### Thread ID Support
+
+Set thread_id for conversational tracking:
+
+```python
+span.set_attribute("thread_id", "conversation-123")
+```
+
+### Project and Workspace
+
+Set via headers or environment variables:
+
+```bash
+export OTEL_EXPORTER_OTLP_HEADERS="projectName=my-project,Comet-Workspace=my-workspace"
+```
+
+## Framework-Specific Integrations
+
+Some frameworks have native OpenTelemetry support:
+
+<CardGroup cols={2}>
+  <Card title="Pydantic AI" href="/integrations/pydantic-ai">
+    Type-safe agents with Logfire and OpenTelemetry
+  </Card>
+  <Card title="Smolagents" href="/integrations/smolagents">
+    HuggingFace agents with OTEL instrumentation
+  </Card>
+  <Card title="Spring AI" href="/integrations/spring-ai">
+    Java-based AI with OTEL support
+  </Card>
+</CardGroup>
+
+## Important Notes
+
+<Warning>
+  Make sure to import the HTTP trace exporter (`opentelemetry.exporter.otlp.proto.http.trace_exporter`). Using the GRPC exporter will cause errors.
+</Warning>
+
+<Note>
+  Opik currently supports traces only. Set `OTEL_METRICS_EXPORTER=none` to avoid errors.
+</Note>
+
+## Viewing Traces
+
+All OpenTelemetry traces are logged to Opik with:
+
+- **Spans** with timing information
+- **Attributes** including custom metadata
+- **Events** for important occurrences
+- **Links** between related spans
+- **Status** for error tracking
+
+## Resources
+
+<CardGroup cols={2}>
+  <Card title="OpenTelemetry Documentation" href="https://opentelemetry.io/docs/" icon="book">
+    Official OpenTelemetry documentation
+  </Card>
+  <Card title="OTEL Python SDK" href="https://opentelemetry-python.readthedocs.io/" icon="python">
+    Python SDK documentation
+  </Card>
+  <Card title="OTEL Registry" href="https://opentelemetry.io/registry/" icon="list">
+    Browse all OpenTelemetry integrations
+  </Card>
+  <Card title="Opik Python SDK" href="/sdk/python/overview" icon="code">
+    Alternative Python integration
+  </Card>
+</CardGroup>

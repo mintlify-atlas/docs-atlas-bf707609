@@ -1,0 +1,699 @@
+---
+title: "Experiments"
+description: "Track, compare, and analyze experiments in Opik"
+---
+
+Experiments in Opik allow you to systematically test different approaches, track results, and compare performance across model versions, prompts, or configurations.
+
+## What is an Experiment?
+
+An experiment represents a single evaluation run that:
+- Links to a specific dataset
+- Contains experiment items (dataset item + trace pairs)
+- Stores evaluation scores and metrics
+- Tracks configuration and metadata
+- Can be compared with other experiments
+
+## Creating Experiments
+
+Experiments are automatically created when you run `evaluate()`:
+
+```python
+from opik import Opik, evaluate, track
+from opik.evaluation.metrics import Hallucination
+
+client = Opik()
+dataset = client.get_dataset(name="my-dataset")
+
+@track
+def my_task(item: dict) -> dict:
+    # Your LLM logic
+    result = process_with_llm(item["input"])
+    return {"output": result}
+
+# Creates an experiment automatically
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination()],
+    experiment_name="gpt-4-baseline"
+)
+
+print(f"Experiment ID: {results.experiment_id}")
+print(f"Experiment name: {results.experiment_name}")
+```
+
+## Experiment Naming
+
+### Explicit Name
+
+Provide a specific experiment name:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metrics],
+    experiment_name="gpt-4-temp-0.7-v1"
+)
+```
+
+### Auto-Generated with Prefix
+
+Use a prefix for grouped experiments:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metrics],
+    experiment_name_prefix="rag-evaluation"
+)
+# Creates: "rag-evaluation-abc123" (with unique suffix)
+```
+
+### Fully Auto-Generated
+
+Let Opik generate a name:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metrics]
+    # No experiment_name or prefix
+)
+# Creates a timestamped name
+```
+
+## Experiment Configuration
+
+Track configuration parameters with your experiment:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metrics],
+    experiment_name="gpt-4-optimized",
+    experiment_config={
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "top_p": 0.9,
+        "retrieval_k": 5,
+        "chunk_size": 512
+    }
+)
+```
+
+This configuration:
+- Is stored with the experiment
+- Helps track what settings were used
+- Makes experiments reproducible
+- Enables filtering and comparison
+
+## Experiment Tags
+
+Organize experiments with tags:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metrics],
+    experiment_name="production-test",
+    experiment_tags=["production", "baseline", "gpt-4"]
+)
+```
+
+Use tags for:
+- Categorizing experiments (e.g., "baseline", "optimized")
+- Marking stages (e.g., "dev", "staging", "production")
+- Grouping by model (e.g., "gpt-4", "claude")
+- Filtering in the UI
+
+## Working with Experiment Objects
+
+### Get Experiment Data
+
+Access experiment properties:
+
+```python
+from opik import Opik
+
+client = Opik()
+
+# Get experiment data (requires accessing via evaluation results)
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[metrics],
+    experiment_name="my-experiment"
+)
+
+# Access experiment info
+print(f"ID: {results.experiment_id}")
+print(f"Name: {results.experiment_name}")
+```
+
+### Experiment Properties
+
+<ResponseField name="id" type="string">
+  Unique identifier for the experiment
+</ResponseField>
+
+<ResponseField name="name" type="string">
+  The experiment name
+</ResponseField>
+
+<ResponseField name="dataset_name" type="string">
+  Name of the associated dataset
+</ResponseField>
+
+<ResponseField name="dataset_id" type="string">
+  ID of the associated dataset
+</ResponseField>
+
+<ResponseField name="tags" type="list[string]">
+  Tags associated with the experiment
+</ResponseField>
+
+## Experiment Items
+
+Each experiment contains items that link dataset items to traces:
+
+```python
+from opik.api_objects.experiment import ExperimentItemReferences
+
+# Manually create experiment items (advanced usage)
+experiment_items = [
+    ExperimentItemReferences(
+        dataset_item_id="dataset-item-id-1",
+        trace_id="trace-id-1",
+        project_name="my-project"
+    ),
+    ExperimentItemReferences(
+        dataset_item_id="dataset-item-id-2",
+        trace_id="trace-id-2",
+        project_name="my-project"
+    )
+]
+
+# Insert items into experiment
+# Note: This is typically done automatically by evaluate()
+```
+
+## Evaluation Results
+
+The `evaluate()` function returns an `EvaluationResult` object:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination()],
+    experiment_name="my-experiment"
+)
+
+# Access results
+print(f"Experiment: {results.experiment_name}")
+print(f"Total items: {len(results.test_results)}")
+
+# Iterate through test results
+for test_result in results.test_results:
+    print(f"\nDataset Item: {test_result.dataset_item_id}")
+    print(f"Trace ID: {test_result.trace_id}")
+    
+    # Access scores
+    for score in test_result.score_results:
+        print(f"  {score.name}: {score.value}")
+        if score.reason:
+            print(f"    Reason: {score.reason}")
+```
+
+### EvaluationResult Properties
+
+<ResponseField name="experiment_name" type="string">
+  Name of the experiment
+</ResponseField>
+
+<ResponseField name="experiment_id" type="string">
+  Unique experiment identifier
+</ResponseField>
+
+<ResponseField name="test_results" type="list[TestResult]">
+  List of test results, one per dataset item evaluated
+</ResponseField>
+
+### TestResult Properties
+
+<ResponseField name="dataset_item_id" type="string">
+  ID of the dataset item
+</ResponseField>
+
+<ResponseField name="trace_id" type="string">
+  ID of the trace created during task execution
+</ResponseField>
+
+<ResponseField name="score_results" type="list[ScoreResult]">
+  List of scores computed for this item
+</ResponseField>
+
+### ScoreResult Properties
+
+<ResponseField name="name" type="string">
+  Name of the metric/score
+</ResponseField>
+
+<ResponseField name="value" type="float">
+  The score value (typically 0.0 to 1.0)
+</ResponseField>
+
+<ResponseField name="reason" type="string">
+  Optional explanation for the score
+</ResponseField>
+
+<ResponseField name="scoring_failed" type="boolean">
+  Whether scoring failed for this item
+</ResponseField>
+
+## Experiment-Level Scoring
+
+Compute aggregate scores across all test results:
+
+```python
+from opik.evaluation import evaluate, test_result
+from opik.evaluation.metrics import score_result
+
+def compute_aggregate_metrics(test_results: list[test_result.TestResult]):
+    """Compute experiment-level aggregate scores."""
+    
+    # Extract all hallucination scores
+    hallucination_scores = [
+        score.value
+        for result in test_results
+        for score in result.score_results
+        if score.name == "Hallucination" and not score.scoring_failed
+    ]
+    
+    if not hallucination_scores:
+        return []
+    
+    # Compute statistics
+    avg_score = sum(hallucination_scores) / len(hallucination_scores)
+    pass_rate = sum(1 for s in hallucination_scores if s > 0.8) / len(hallucination_scores)
+    
+    return [
+        score_result.ScoreResult(
+            name="avg_hallucination_score",
+            value=avg_score,
+            reason=f"Average across {len(hallucination_scores)} items"
+        ),
+        score_result.ScoreResult(
+            name="pass_rate_80",
+            value=pass_rate,
+            reason="Percentage of items scoring > 0.8"
+        )
+    ]
+
+# Use in evaluation
+results = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[Hallucination()],
+    experiment_scoring_functions=[compute_aggregate_metrics],
+    experiment_name="with-aggregates"
+)
+```
+
+## Comparing Experiments
+
+Run multiple experiments to compare approaches:
+
+```python
+from opik import Opik, evaluate, track
+from opik.evaluation.metrics import Hallucination
+
+client = Opik()
+dataset = client.get_dataset(name="eval-dataset")
+
+# Experiment 1: GPT-4 with low temperature
+@track
+def gpt4_conservative(item: dict) -> dict:
+    response = call_openai(
+        model="gpt-4",
+        temperature=0.1,
+        messages=[{"role": "user", "content": item["input"]["question"]}]
+    )
+    return {"output": response}
+
+results_1 = evaluate(
+    dataset=dataset,
+    task=gpt4_conservative,
+    scoring_metrics=[Hallucination()],
+    experiment_name="gpt4-temp-0.1",
+    experiment_config={"model": "gpt-4", "temperature": 0.1},
+    experiment_tags=["gpt-4", "conservative"]
+)
+
+# Experiment 2: GPT-4 with higher temperature
+@track
+def gpt4_creative(item: dict) -> dict:
+    response = call_openai(
+        model="gpt-4",
+        temperature=0.8,
+        messages=[{"role": "user", "content": item["input"]["question"]}]
+    )
+    return {"output": response}
+
+results_2 = evaluate(
+    dataset=dataset,
+    task=gpt4_creative,
+    scoring_metrics=[Hallucination()],
+    experiment_name="gpt4-temp-0.8",
+    experiment_config={"model": "gpt-4", "temperature": 0.8},
+    experiment_tags=["gpt-4", "creative"]
+)
+
+# Compare results
+print("Experiment 1 (temp=0.1):")
+for result in results_1.test_results[:3]:
+    print(f"  Score: {result.score_results[0].value}")
+
+print("\nExperiment 2 (temp=0.8):")
+for result in results_2.test_results[:3]:
+    print(f"  Score: {result.score_results[0].value}")
+```
+
+## Prompt Versioning
+
+Link experiments to specific prompt versions:
+
+```python
+from opik import Opik, evaluate
+
+client = Opik()
+
+# Get prompts
+prompt_v1 = client.get_prompt(name="qa-prompt", version="1.0")
+prompt_v2 = client.get_prompt(name="qa-prompt", version="2.0")
+
+# Task using prompt v1
+@track
+def task_v1(item: dict) -> dict:
+    formatted = prompt_v1.format(**item["input"])
+    response = call_llm(formatted)
+    return {"output": response}
+
+# Task using prompt v2
+@track
+def task_v2(item: dict) -> dict:
+    formatted = prompt_v2.format(**item["input"])
+    response = call_llm(formatted)
+    return {"output": response}
+
+# Evaluate both versions
+results_v1 = evaluate(
+    dataset=dataset,
+    task=task_v1,
+    scoring_metrics=[metrics],
+    experiment_name="prompt-v1",
+    prompts=[prompt_v1]
+)
+
+results_v2 = evaluate(
+    dataset=dataset,
+    task=task_v2,
+    scoring_metrics=[metrics],
+    experiment_name="prompt-v2",
+    prompts=[prompt_v2]
+)
+```
+
+## Evaluating Existing Experiments
+
+Add new metrics to previously run experiments:
+
+```python
+from opik.evaluation import evaluate_experiment
+from opik.evaluation.metrics import IsJson
+
+# Add IsJson metric to an existing experiment
+results = evaluate_experiment(
+    experiment_name="my-existing-experiment",
+    scoring_metrics=[IsJson()]
+)
+
+print(f"Re-evaluated {len(results.test_results)} items")
+```
+
+## Trial Runs
+
+Run each dataset item multiple times for consistency testing:
+
+```python
+results = evaluate(
+    dataset=dataset,
+    task=my_nondeterministic_task,
+    scoring_metrics=[metrics],
+    experiment_name="consistency-test",
+    trial_count=5  # Run each item 5 times
+)
+
+# Analyze consistency
+for test_result in results.test_results:
+    scores = [score.value for score in test_result.score_results]
+    print(f"Item {test_result.dataset_item_id}:")
+    print(f"  Scores: {scores}")
+    print(f"  Std Dev: {statistics.stdev(scores)}")
+```
+
+## Complete Example: A/B Testing
+
+Compare two different approaches:
+
+```python
+from opik import Opik, evaluate, track
+from opik.evaluation.metrics import Hallucination, score_result
+from opik.integrations.openai import track_openai
+import openai
+import statistics
+
+# Setup
+client = Opik(project_name="ab-testing")
+openai_client = track_openai(openai.OpenAI())
+
+# Create dataset
+dataset = client.get_or_create_dataset(name="qa-dataset")
+dataset.insert([
+    {
+        "input": {"question": "What is machine learning?"},
+        "expected_output": "Machine learning is...",
+        "context": ["ML is a subset of AI..."]
+    },
+    {
+        "input": {"question": "What is deep learning?"},
+        "expected_output": "Deep learning is...",
+        "context": ["DL uses neural networks..."]
+    }
+])
+
+# Approach A: Direct prompting
+@track(name="direct-prompt", type="llm")
+def approach_a(item: dict) -> dict:
+    question = item["input"]["question"]
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        temperature=0.3,
+        messages=[{"role": "user", "content": question}]
+    )
+    
+    return {
+        "output": response.choices[0].message.content,
+        "context": item.get("context", []),
+        "reference": item.get("expected_output")
+    }
+
+# Approach B: RAG with context
+@track(name="rag-prompt", type="llm")
+def approach_b(item: dict) -> dict:
+    question = item["input"]["question"]
+    context = item.get("context", [])
+    
+    prompt = f"""Context: {' '.join(context)}
+
+Question: {question}
+
+Answer based on the context:"""
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        temperature=0.3,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return {
+        "output": response.choices[0].message.content,
+        "context": context,
+        "reference": item.get("expected_output")
+    }
+
+# Experiment-level scoring
+def compute_stats(test_results):
+    scores = [
+        score.value
+        for result in test_results
+        for score in result.score_results
+        if score.name == "Hallucination"
+    ]
+    
+    if not scores:
+        return []
+    
+    return [
+        score_result.ScoreResult(
+            name="mean_score",
+            value=statistics.mean(scores)
+        ),
+        score_result.ScoreResult(
+            name="median_score",
+            value=statistics.median(scores)
+        ),
+        score_result.ScoreResult(
+            name="std_dev",
+            value=statistics.stdev(scores) if len(scores) > 1 else 0
+        )
+    ]
+
+# Run Experiment A
+print("Running Experiment A: Direct Prompting")
+results_a = evaluate(
+    dataset=dataset,
+    task=approach_a,
+    scoring_metrics=[Hallucination()],
+    experiment_name="direct-prompting",
+    experiment_config={
+        "approach": "direct",
+        "model": "gpt-4",
+        "temperature": 0.3
+    },
+    experiment_scoring_functions=[compute_stats],
+    experiment_tags=["baseline", "no-rag"],
+    verbose=2
+)
+
+# Run Experiment B
+print("\nRunning Experiment B: RAG Prompting")
+results_b = evaluate(
+    dataset=dataset,
+    task=approach_b,
+    scoring_metrics=[Hallucination()],
+    experiment_name="rag-prompting",
+    experiment_config={
+        "approach": "rag",
+        "model": "gpt-4",
+        "temperature": 0.3,
+        "context_injection": True
+    },
+    experiment_scoring_functions=[compute_stats],
+    experiment_tags=["rag", "optimized"],
+    verbose=2
+)
+
+# Compare results
+print("\n" + "="*50)
+print("COMPARISON RESULTS")
+print("="*50)
+
+print(f"\nExperiment A - {results_a.experiment_name}:")
+for result in results_a.test_results:
+    for score in result.score_results:
+        print(f"  {score.name}: {score.value:.3f}")
+
+print(f"\nExperiment B - {results_b.experiment_name}:")
+for result in results_b.test_results:
+    for score in result.score_results:
+        print(f"  {score.name}: {score.value:.3f}")
+
+print("\nView detailed results in the Opik UI")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive experiment names">
+    Make experiments easy to identify and compare:
+    ```python
+    experiment_name="gpt4-rag-v2-temp0.7-2024-03"
+    ```
+  </Accordion>
+  
+  <Accordion title="Track configuration">
+    Always include experiment configuration:
+    ```python
+    experiment_config={
+        "model": "gpt-4",
+        "temperature": 0.7,
+        "max_tokens": 1000,
+        "retrieval_k": 5,
+        "version": "2.0"
+    }
+    ```
+  </Accordion>
+  
+  <Accordion title="Use consistent tags">
+    Develop a tagging strategy:
+    ```python
+    # Good tags: organized and consistent
+    experiment_tags=["production", "gpt-4", "rag", "v2"]
+    
+    # Avoid: inconsistent or vague tags
+    experiment_tags=["test", "new", "latest"]
+    ```
+  </Accordion>
+  
+  <Accordion title="Run control experiments">
+    Always have a baseline for comparison:
+    ```python
+    # First, run a simple baseline
+    baseline_results = evaluate(
+        dataset=dataset,
+        task=simple_task,
+        experiment_name="baseline",
+        experiment_tags=["baseline"]
+    )
+    
+    # Then run your optimized version
+    optimized_results = evaluate(
+        dataset=dataset,
+        task=optimized_task,
+        experiment_name="optimized-v1",
+        experiment_tags=["optimized"]
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="Use aggregate scoring">
+    Compute experiment-level metrics:
+    ```python
+    experiment_scoring_functions=[
+        compute_mean_and_std,
+        compute_pass_rate,
+        compute_percentiles
+    ]
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/python/evaluation">
+    Learn more about the evaluation framework
+  </Card>
+  <Card title="Datasets" icon="database" href="/sdk/python/datasets">
+    Manage datasets for experiments
+  </Card>
+</CardGroup>

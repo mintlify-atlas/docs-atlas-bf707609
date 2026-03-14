@@ -1,0 +1,387 @@
+---
+title: Advanced Configuration
+description: Advanced configuration options for the Opik TypeScript SDK
+---
+
+## Configuration Priority
+
+The Opik SDK loads configuration from multiple sources with the following precedence (highest to lowest):
+
+1. **Constructor parameters**: Values passed directly to `new Opik({})`
+2. **Environment variables**: Variables prefixed with `OPIK_`
+3. **Configuration file**: `~/.opik.config` or custom path
+4. **Default values**: Built-in SDK defaults
+
+## Configuration Sources
+
+### Constructor Configuration
+
+The most explicit way to configure the SDK:
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik({
+  apiKey: "your-api-key",
+  apiUrl: "https://www.comet.com/opik/api",
+  projectName: "my-project",
+  workspaceName: "my-workspace",
+  batchDelayMs: 500,
+  holdUntilFlush: false,
+  headers: {
+    "X-Custom-Header": "value",
+  },
+});
+```
+
+### Environment Variables
+
+All configuration options can be set via environment variables:
+
+```bash
+# Required for cloud deployments
+OPIK_API_KEY="your-api-key"
+OPIK_WORKSPACE="your-workspace"
+
+# API endpoint
+OPIK_URL_OVERRIDE="https://www.comet.com/opik/api"
+
+# Project settings
+OPIK_PROJECT_NAME="my-project"
+
+# Batching configuration
+OPIK_BATCH_DELAY_MS=300
+OPIK_HOLD_UNTIL_FLUSH=false
+
+# Config file path (optional)
+OPIK_CONFIG_PATH="/custom/path/to/config"
+```
+
+<Note>
+  Environment variables are automatically loaded from `.env` files in your project root.
+</Note>
+
+### Configuration File
+
+Create an INI-formatted config file at `~/.opik.config`:
+
+```ini
+[opik]
+api_key = your-api-key
+url_override = https://www.comet.com/opik/api
+project_name = my-project
+workspace = your-workspace
+```
+
+#### Custom Config Path
+
+Specify a custom configuration file location:
+
+```bash
+export OPIK_CONFIG_PATH="~/.config/opik/production.config"
+```
+
+The path supports `~` for home directory expansion.
+
+## Configuration Options
+
+### API Connection
+
+<ParamField path="apiKey" type="string">
+  Your Opik API key. Required for cloud deployments (comet.com).
+  
+  - **Constructor**: `apiKey`
+  - **Environment**: `OPIK_API_KEY`
+  - **Config file**: `api_key`
+</ParamField>
+
+<ParamField path="apiUrl" type="string" default="https://www.comet.com/opik/api">
+  The Opik API endpoint URL.
+  
+  - **Constructor**: `apiUrl`
+  - **Environment**: `OPIK_URL_OVERRIDE`
+  - **Config file**: `url_override`
+  
+  **Examples**:
+  - Cloud: `https://www.comet.com/opik/api`
+  - Local: `http://localhost:5173/api`
+</ParamField>
+
+<ParamField path="workspaceName" type="string" default="default">
+  Your Comet workspace name. Required for cloud deployments.
+  
+  - **Constructor**: `workspaceName`
+  - **Environment**: `OPIK_WORKSPACE`
+  - **Config file**: `workspace`
+</ParamField>
+
+### Project Settings
+
+<ParamField path="projectName" type="string" default="Default Project">
+  The default project name for traces and experiments.
+  
+  - **Constructor**: `projectName`
+  - **Environment**: `OPIK_PROJECT_NAME`
+  - **Config file**: `project_name`
+  
+  You can override this per-trace:
+  ```typescript
+  client.trace({ name: "trace", projectName: "custom-project" });
+  ```
+</ParamField>
+
+### Batching and Performance
+
+<ParamField path="batchDelayMs" type="number" default={300}>
+  Time in milliseconds to wait before auto-flushing batched traces.
+  
+  - **Constructor**: `batchDelayMs`
+  - **Environment**: `OPIK_BATCH_DELAY_MS`
+  
+  **Recommendations**:
+  - Low latency (real-time): `100-300ms`
+  - Balanced: `300-1000ms`
+  - High throughput: `1000-5000ms`
+</ParamField>
+
+<ParamField path="holdUntilFlush" type="boolean" default={false}>
+  Disable automatic batching. All data is held until `flush()` is called.
+  
+  - **Constructor**: `holdUntilFlush`
+  - **Environment**: `OPIK_HOLD_UNTIL_FLUSH` (accepts: `1`, `true`, `yes`)
+  
+  Useful for:
+  - Testing environments
+  - Batch processing jobs
+  - Precise control over when data is sent
+</ParamField>
+
+### Custom Headers
+
+<ParamField path="headers" type="Record<string, string>">
+  Custom HTTP headers to include with all API requests.
+  
+  - **Constructor only**: `headers`
+  
+  ```typescript
+  const client = new Opik({
+    headers: {
+      "X-Request-ID": "unique-id",
+      "X-Environment": "production",
+    },
+  });
+  ```
+</ParamField>
+
+## Environment-Specific Configuration
+
+Manage different configurations for development, staging, and production:
+
+### Using .env Files
+
+<Tabs>
+  <Tab title=".env.development">
+    ```bash
+    OPIK_URL_OVERRIDE="http://localhost:5173/api"
+    OPIK_PROJECT_NAME="dev-project"
+    OPIK_BATCH_DELAY_MS=100
+    ```
+  </Tab>
+  <Tab title=".env.staging">
+    ```bash
+    OPIK_API_KEY="staging-api-key"
+    OPIK_URL_OVERRIDE="https://staging.comet.com/opik/api"
+    OPIK_WORKSPACE="staging-workspace"
+    OPIK_PROJECT_NAME="staging-project"
+    OPIK_BATCH_DELAY_MS=300
+    ```
+  </Tab>
+  <Tab title=".env.production">
+    ```bash
+    OPIK_API_KEY="prod-api-key"
+    OPIK_URL_OVERRIDE="https://www.comet.com/opik/api"
+    OPIK_WORKSPACE="prod-workspace"
+    OPIK_PROJECT_NAME="prod-project"
+    OPIK_BATCH_DELAY_MS=1000
+    ```
+  </Tab>
+</Tabs>
+
+Load the appropriate environment file:
+
+```bash
+# Development
+cp .env.development .env
+
+# Staging
+cp .env.staging .env
+
+# Production
+cp .env.production .env
+```
+
+### Programmatic Configuration
+
+```typescript
+import { Opik } from "opik";
+
+const config = {
+  development: {
+    apiUrl: "http://localhost:5173/api",
+    projectName: "dev-project",
+  },
+  production: {
+    apiKey: process.env.OPIK_API_KEY,
+    apiUrl: "https://www.comet.com/opik/api",
+    workspaceName: process.env.OPIK_WORKSPACE,
+    projectName: "prod-project",
+  },
+};
+
+const env = process.env.NODE_ENV || "development";
+const client = new Opik(config[env]);
+```
+
+## Multiple Clients
+
+You can create multiple Opik clients with different configurations:
+
+```typescript
+import { Opik } from "opik";
+
+// Client for production logging
+const prodClient = new Opik({
+  apiKey: process.env.PROD_API_KEY,
+  workspaceName: "production",
+  projectName: "prod-app",
+});
+
+// Client for development/testing
+const devClient = new Opik({
+  apiUrl: "http://localhost:5173/api",
+  projectName: "dev-app",
+});
+
+// Use different clients for different purposes
+prodClient.trace({ name: "user-request" });
+devClient.trace({ name: "test-trace" });
+
+// Flush both
+await prodClient.flush();
+await devClient.flush();
+```
+
+## Validation and Error Handling
+
+The SDK validates configuration on client initialization:
+
+```typescript
+import { Opik } from "opik";
+
+try {
+  const client = new Opik({
+    // Missing required fields for cloud deployment
+    apiUrl: "https://www.comet.com/opik/api",
+  });
+} catch (error) {
+  console.error("Configuration error:", error.message);
+  // Error: OPIK_API_KEY is not set
+}
+```
+
+### Validation Rules
+
+1. **Cloud deployments** (`*.comet.com`):
+   - `apiKey` is required
+   - `workspaceName` is required
+
+2. **Local deployments**:
+   - Only `apiUrl` is required
+   - API key and workspace are optional
+
+3. **All deployments**:
+   - `apiUrl` must be a valid URL
+
+## Configuration Best Practices
+
+<Steps>
+  <Step title="Use environment variables for secrets">
+    Never hardcode API keys in source code. Use environment variables or secure secret management:
+
+    ```typescript
+    // ✅ Good
+    const client = new Opik({
+      apiKey: process.env.OPIK_API_KEY,
+    });
+
+    // ❌ Bad
+    const client = new Opik({
+      apiKey: "opik-1234567890abcdef",
+    });
+    ```
+  </Step>
+
+  <Step title="Use config files for non-sensitive settings">
+    Store project names, URLs, and other non-sensitive settings in config files:
+
+    ```ini
+    [opik]
+    url_override = https://www.comet.com/opik/api
+    project_name = my-project
+    ```
+  </Step>
+
+  <Step title="Override per environment">
+    Use constructor parameters to override settings for specific environments:
+
+    ```typescript
+    const client = new Opik({
+      // Base config from environment variables
+      // Override project name for this instance
+      projectName: `${process.env.SERVICE_NAME}-${process.env.NODE_ENV}`,
+    });
+    ```
+  </Step>
+
+  <Step title="Validate configuration early">
+    Create clients during application startup to catch configuration errors early:
+
+    ```typescript
+    // In app initialization
+    try {
+      const client = new Opik();
+      console.log("✅ Opik configured successfully");
+    } catch (error) {
+      console.error("❌ Opik configuration failed:", error.message);
+      process.exit(1);
+    }
+    ```
+  </Step>
+</Steps>
+
+## Debugging Configuration
+
+Enable debug logging to see how configuration is loaded:
+
+```typescript
+import { Opik } from "opik";
+
+// The SDK logs configuration details at the debug level
+const client = new Opik();
+
+// Check the loaded configuration
+console.log("API URL:", client.config.apiUrl);
+console.log("Project:", client.config.projectName);
+console.log("Workspace:", client.config.workspaceName);
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client API" icon="code" href="/sdk/typescript/client">
+    Explore the full OpikClient API
+  </Card>
+  <Card title="Tracing" icon="route" href="/sdk/typescript/tracing">
+    Learn how to trace your applications
+  </Card>
+</CardGroup>

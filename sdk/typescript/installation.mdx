@@ -1,0 +1,286 @@
+---
+title: Installation & Configuration
+description: Install and configure the Opik TypeScript SDK
+---
+
+## Prerequisites
+
+- **Node.js**: Version 18 or higher
+- **Package Manager**: npm, yarn, pnpm, or bun
+- **TypeScript**: Optional but recommended (the SDK includes TypeScript definitions)
+
+## Installation
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install opik
+    ```
+  </Tab>
+  <Tab title="yarn">
+    ```bash
+    yarn add opik
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add opik
+    ```
+  </Tab>
+  <Tab title="bun">
+    ```bash
+    bun add opik
+    ```
+  </Tab>
+</Tabs>
+
+### Peer Dependencies
+
+The SDK requires **Zod** as a peer dependency for schema validation:
+
+```bash
+npm install zod
+```
+
+The SDK is compatible with Zod versions `^3.25.55` or `^4.0.0`.
+
+## Configuration
+
+The Opik SDK can be configured in three ways, listed in order of precedence:
+
+1. **Constructor parameters** (highest priority)
+2. **Environment variables**
+3. **Configuration file** (lowest priority)
+
+### Constructor Configuration
+
+Pass configuration directly when creating the client:
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik({
+  apiKey: "your-api-key",
+  apiUrl: "https://www.comet.com/opik/api",
+  projectName: "my-project",
+  workspaceName: "my-workspace",
+});
+```
+
+<ParamField path="apiKey" type="string" required>
+  Your Opik API key. Required when using Comet's hosted Opik.
+</ParamField>
+
+<ParamField path="apiUrl" type="string" default="https://www.comet.com/opik/api">
+  The Opik API URL. Use `http://localhost:5173/api` for local deployments.
+</ParamField>
+
+<ParamField path="projectName" type="string" default="Default Project">
+  The name of the project to log traces to.
+</ParamField>
+
+<ParamField path="workspaceName" type="string" default="default">
+  Your Comet workspace name. Required when using Comet's hosted Opik.
+</ParamField>
+
+<ParamField path="headers" type="Record<string, string>">
+  Optional custom headers to include with API requests.
+</ParamField>
+
+<ParamField path="batchDelayMs" type="number" default={300}>
+  Delay in milliseconds before flushing batched traces and spans.
+</ParamField>
+
+<ParamField path="holdUntilFlush" type="boolean" default={false}>
+  If true, prevents automatic batching until `flush()` is called manually.
+</ParamField>
+
+### Environment Variables
+
+Create a `.env` file in your project root:
+
+```bash
+OPIK_API_KEY="your-api-key"
+OPIK_URL_OVERRIDE="https://www.comet.com/opik/api"
+OPIK_PROJECT_NAME="my-project"
+OPIK_WORKSPACE="my-workspace"
+
+# Optional settings
+OPIK_BATCH_DELAY_MS=300
+OPIK_HOLD_UNTIL_FLUSH=false
+```
+
+<Note>
+  The SDK automatically loads `.env` files using the `dotenv` package.
+</Note>
+
+Then create the client without parameters:
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik();
+```
+
+### Configuration File
+
+Create a configuration file at `~/.opik.config`:
+
+```ini
+[opik]
+api_key = your-api-key
+url_override = https://www.comet.com/opik/api
+project_name = my-project
+workspace = my-workspace
+```
+
+You can specify a custom config file path using the `OPIK_CONFIG_PATH` environment variable:
+
+```bash
+export OPIK_CONFIG_PATH="/path/to/custom/config"
+```
+
+## Local Deployment
+
+To use Opik with a local deployment:
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik({
+  apiUrl: "http://localhost:5173/api",
+  // API key and workspace are not required for local deployments
+});
+```
+
+Or using environment variables:
+
+```bash
+OPIK_URL_OVERRIDE="http://localhost:5173/api"
+```
+
+## Validation
+
+The SDK validates your configuration on initialization. If required fields are missing, it will throw an error:
+
+- **Cloud deployments** (comet.com): Requires `apiKey` and `workspaceName`
+- **Local deployments**: Only requires `apiUrl`
+
+## Custom Headers
+
+You can add custom headers to all API requests:
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik({
+  apiKey: "your-api-key",
+  headers: {
+    "X-Custom-Header": "value",
+    "User-Agent": "my-app/1.0",
+  },
+});
+```
+
+## Batching Configuration
+
+The SDK automatically batches traces and spans to reduce API calls. You can control this behavior:
+
+### Auto-flush Mode (Default)
+
+```typescript
+const client = new Opik({
+  batchDelayMs: 300, // Flush every 300ms
+});
+
+// Traces are automatically sent after 300ms
+client.trace({ name: "my-trace" });
+```
+
+### Manual Flush Mode
+
+```typescript
+const client = new Opik({
+  holdUntilFlush: true, // Disable auto-flush
+});
+
+// Create multiple traces
+for (let i = 0; i < 100; i++) {
+  client.trace({ name: `trace-${i}` });
+}
+
+// Manually flush all pending data
+await client.flush();
+```
+
+### Global Flush
+
+To flush all Opik clients in your application:
+
+```typescript
+import { flushAll } from "opik";
+
+// Flush all active Opik clients
+await flushAll();
+```
+
+<Warning>
+  Always call `flush()` or `flushAll()` before your application exits to ensure all traces are sent.
+</Warning>
+
+## TypeScript Configuration
+
+For the best experience with TypeScript, ensure your `tsconfig.json` includes:
+
+```json
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "experimentalDecorators": true,  // Required for @track decorator
+    "emitDecoratorMetadata": true,   // Required for @track decorator
+    "strict": true
+  }
+}
+```
+
+## Verification
+
+Verify your installation and configuration:
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik();
+
+// Create a test trace
+const trace = client.trace({
+  name: "test-trace",
+  input: { message: "Hello, Opik!" },
+  output: { response: "Configuration successful!" },
+});
+
+trace.end();
+
+await client.flush();
+
+console.log("✅ Opik SDK configured successfully!");
+```
+
+Check the Opik dashboard to confirm the trace was logged.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client API" icon="code" href="/sdk/typescript/client">
+    Explore the full OpikClient API
+  </Card>
+  <Card title="Tracing" icon="route" href="/sdk/typescript/tracing">
+    Learn how to trace your applications
+  </Card>
+  <Card title="Configuration" icon="gear" href="/sdk/typescript/configuration">
+    Advanced configuration options
+  </Card>
+</CardGroup>

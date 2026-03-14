@@ -1,0 +1,556 @@
+---
+title: "Online Evaluation"
+description: "Continuously evaluate your LLM application quality in production with automated rules"
+---
+
+Online evaluation enables you to automatically assess the quality of your LLM applications in production by running evaluation metrics on live traces. This helps you identify issues early, maintain quality standards, and ensure consistent performance.
+
+## Overview
+
+Online evaluation in Opik allows you to:
+
+- **Automatically score production traces** using LLM-as-a-Judge metrics
+- **Detect quality issues** in real-time without manual review
+- **Monitor compliance** with your quality standards
+- **Trigger alerts** when quality drops below thresholds
+- **Sample efficiently** to balance cost and coverage
+
+<Note>
+Online evaluation runs asynchronously after traces are logged, so it doesn't impact your application's performance or latency.
+</Note>
+
+## How Online Evaluation Works
+
+Online evaluation follows this workflow:
+
+<Steps>
+  <Step title="Log Production Traces">
+    Your application logs traces to Opik using the SDK or integrations
+  </Step>
+  <Step title="Apply Evaluation Rules">
+    Opik applies configured evaluation rules to matching traces
+  </Step>
+  <Step title="Score with Metrics">
+    LLM-as-a-Judge or heuristic metrics score the traces automatically
+  </Step>
+  <Step title="Store Feedback Scores">
+    Scores are stored as feedback scores attached to the traces
+  </Step>
+  <Step title="Monitor and Alert">
+    View scores in dashboards or set up alerts for quality issues
+  </Step>
+</Steps>
+
+## Logging Feedback Scores
+
+While online evaluation rules can automatically score traces, you can also manually log feedback scores from your application:
+
+### Logging Scores to Traces
+
+```python
+import opik
+from opik.evaluation.metrics import Hallucination
+
+client = opik.Opik(project_name="production-app")
+
+# Create a trace
+trace = client.trace(
+    name="rag-query",
+    input={"query": "What is the capital of France?"},
+    tags=["production", "rag"],
+)
+
+# Your application logic
+context = ["France is a country in Europe. Paris is its capital city."]
+output = "The capital of France is Paris."
+
+trace.update(output={"answer": output})
+trace.end()
+
+# Evaluate and log feedback score
+hallucination_metric = Hallucination()
+score = hallucination_metric.score(
+    input=trace.input["query"],
+    output=output,
+    context=context,
+)
+
+trace.log_feedback_score(
+    name="hallucination",
+    value=score.value,
+    reason=score.reason,
+)
+
+client.end()
+```
+
+### Batch Logging Feedback Scores
+
+For efficiency, you can batch log feedback scores:
+
+```python
+import opik
+
+client = opik.Opik(project_name="production-app")
+
+# Log multiple feedback scores at once
+scores = [
+    {"id": "trace_id_1", "name": "accuracy", "value": 0.95},
+    {"id": "trace_id_2", "name": "accuracy", "value": 0.87},
+    {"id": "trace_id_3", "name": "accuracy", "value": 0.92},
+]
+
+client.log_traces_feedback_scores(scores=scores)
+client.end()
+```
+
+### Logging Scores to Spans
+
+```python
+import opik
+
+client = opik.Opik(project_name="production-app")
+
+trace = client.trace(name="chat-completion")
+span = trace.span(name="llm-call", type="llm")
+
+# Your LLM call
+span.update(
+    output={"response": "Here is the answer..."},
+    model="gpt-4",
+)
+span.end()
+
+# Log feedback score to the span
+span.log_feedback_score(
+    name="relevance",
+    value=0.89,
+    reason="Response is highly relevant to the query",
+)
+
+trace.end()
+client.end()
+```
+
+## Using LLM-as-a-Judge Metrics
+
+Opik provides powerful LLM-as-a-Judge metrics for automated evaluation:
+
+### Hallucination Detection
+
+```python
+from opik.evaluation.metrics import Hallucination
+import opik
+
+client = opik.Opik()
+hallucination_metric = Hallucination()
+
+# Score production traces for hallucinations
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='tags contains "production"',
+    max_results=100,
+)
+
+for trace in traces:
+    if trace.input and trace.output:
+        # Extract context from metadata or span data
+        context = trace.metadata.get('context', [])
+        
+        score = hallucination_metric.score(
+            input=trace.input.get('query', ''),
+            output=trace.output.get('answer', ''),
+            context=context,
+        )
+        
+        # Log the score back to the trace
+        client.log_traces_feedback_scores([
+            {
+                "id": trace.id,
+                "name": "hallucination",
+                "value": score.value,
+                "reason": score.reason,
+            }
+        ])
+
+client.end()
+```
+
+### Answer Relevance
+
+```python
+from opik.evaluation.metrics import AnswerRelevance
+import opik
+
+client = opik.Opik()
+relevance_metric = AnswerRelevance()
+
+# Evaluate answer relevance for recent traces
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.relevance is_empty',
+    max_results=50,
+)
+
+scores_to_log = []
+for trace in traces:
+    if trace.input and trace.output:
+        score = relevance_metric.score(
+            input=trace.input.get('query', ''),
+            output=trace.output.get('answer', ''),
+        )
+        
+        scores_to_log.append({
+            "id": trace.id,
+            "name": "relevance",
+            "value": score.value,
+            "reason": score.reason,
+        })
+
+# Batch log all scores
+if scores_to_log:
+    client.log_traces_feedback_scores(scores=scores_to_log)
+
+client.end()
+```
+
+### Context Precision
+
+```python
+from opik.evaluation.metrics import ContextPrecision
+import opik
+
+client = opik.Opik()
+precision_metric = ContextPrecision()
+
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='tags contains "rag"',
+    max_results=100,
+)
+
+for trace in traces:
+    if trace.input and trace.output and trace.metadata:
+        context = trace.metadata.get('retrieved_context', [])
+        expected_output = trace.metadata.get('expected_output')
+        
+        if context and expected_output:
+            score = precision_metric.score(
+                input=trace.input.get('query', ''),
+                context=context,
+                expected_output=expected_output,
+            )
+            
+            trace.log_feedback_score(
+                name="context_precision",
+                value=score.value,
+                reason=score.reason,
+            )
+
+client.end()
+```
+
+### Moderation
+
+```python
+from opik.evaluation.metrics import Moderation
+import opik
+
+client = opik.Opik()
+moderation_metric = Moderation()
+
+# Check all user inputs for moderation issues
+traces = client.search_traces(
+    project_name="production-app",
+    filter_string='tags contains "user-input"',
+    max_results=1000,
+)
+
+flagged_traces = []
+for trace in traces:
+    if trace.input:
+        score = moderation_metric.score(
+            input=trace.input.get('message', ''),
+        )
+        
+        # Log moderation score
+        trace.log_feedback_score(
+            name="moderation",
+            value=score.value,
+            reason=score.reason,
+        )
+        
+        # Flag problematic content
+        if score.value < 0.5:  # Low score = content issue
+            flagged_traces.append(trace.id)
+
+if flagged_traces:
+    print(f"Flagged {len(flagged_traces)} traces for review")
+
+client.end()
+```
+
+## Implementing Scheduled Evaluation
+
+Set up a scheduled job to continuously evaluate production traces:
+
+```python
+import opik
+from opik.evaluation.metrics import Hallucination, AnswerRelevance, Moderation
+from datetime import datetime, timedelta
+import time
+
+def evaluate_recent_traces():
+    """Evaluate traces from the last hour."""
+    client = opik.Opik(project_name="production-app")
+    
+    # Define evaluation metrics
+    metrics = {
+        'hallucination': Hallucination(),
+        'relevance': AnswerRelevance(),
+        'moderation': Moderation(),
+    }
+    
+    # Get traces from the last hour that haven't been evaluated
+    start_time = (datetime.now() - timedelta(hours=1)).isoformat() + "Z"
+    
+    traces = client.search_traces(
+        filter_string=f'start_time >= "{start_time}" AND feedback_scores.hallucination is_empty',
+        max_results=1000,
+    )
+    
+    print(f"Evaluating {len(traces)} traces...")
+    
+    scores_to_log = []
+    
+    for trace in traces:
+        if not trace.input or not trace.output:
+            continue
+        
+        input_text = trace.input.get('query', '')
+        output_text = trace.output.get('answer', '')
+        context = trace.metadata.get('context', []) if trace.metadata else []
+        
+        # Score with each metric
+        for metric_name, metric in metrics.items():
+            try:
+                if metric_name == 'hallucination' and context:
+                    score = metric.score(
+                        input=input_text,
+                        output=output_text,
+                        context=context,
+                    )
+                elif metric_name == 'relevance':
+                    score = metric.score(
+                        input=input_text,
+                        output=output_text,
+                    )
+                elif metric_name == 'moderation':
+                    score = metric.score(input=input_text)
+                else:
+                    continue
+                
+                scores_to_log.append({
+                    "id": trace.id,
+                    "name": metric_name,
+                    "value": score.value,
+                    "reason": score.reason,
+                })
+            except Exception as e:
+                print(f"Error scoring trace {trace.id} with {metric_name}: {e}")
+    
+    # Batch log all scores
+    if scores_to_log:
+        client.log_traces_feedback_scores(scores=scores_to_log)
+        print(f"Logged {len(scores_to_log)} feedback scores")
+    
+    client.end()
+
+# Run evaluation every hour
+if __name__ == "__main__":
+    while True:
+        try:
+            evaluate_recent_traces()
+        except Exception as e:
+            print(f"Evaluation error: {e}")
+        
+        # Wait 1 hour before next run
+        time.sleep(3600)
+```
+
+## Sampling Strategies
+
+For high-volume applications, implement sampling to balance cost and coverage:
+
+### Random Sampling
+
+```python
+import opik
+import random
+
+client = opik.Opik()
+
+# Sample 10% of traces for evaluation
+SAMPLE_RATE = 0.1
+
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=10000,
+)
+
+sampled_traces = [t for t in traces if random.random() < SAMPLE_RATE]
+print(f"Sampled {len(sampled_traces)} from {len(traces)} traces")
+
+# Evaluate sampled traces
+for trace in sampled_traces:
+    # Your evaluation logic
+    pass
+```
+
+### Stratified Sampling
+
+```python
+import opik
+from collections import defaultdict
+
+client = opik.Opik()
+
+traces = client.search_traces(
+    project_name="production-app",
+    max_results=10000,
+)
+
+# Group by model and sample equally from each
+by_model = defaultdict(list)
+for trace in traces:
+    if trace.model:
+        by_model[trace.model].append(trace)
+
+SAMPLE_PER_MODEL = 50
+sampled_traces = []
+
+for model, model_traces in by_model.items():
+    sample_size = min(SAMPLE_PER_MODEL, len(model_traces))
+    sampled = random.sample(model_traces, sample_size)
+    sampled_traces.extend(sampled)
+    print(f"Sampled {sample_size} traces from {model}")
+```
+
+## Quality Monitoring Patterns
+
+### Detect Quality Degradation
+
+```python
+import opik
+from datetime import datetime, timedelta
+
+client = opik.Opik()
+
+# Compare last 24h vs previous week
+recent_start = (datetime.now() - timedelta(days=1)).isoformat() + "Z"
+baseline_start = (datetime.now() - timedelta(days=8)).isoformat() + "Z"
+baseline_end = (datetime.now() - timedelta(days=1)).isoformat() + "Z"
+
+# Get recent scores
+recent_traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{recent_start}" AND feedback_scores.relevance is_not_empty',
+)
+
+# Get baseline scores
+baseline_traces = client.search_traces(
+    project_name="production-app",
+    filter_string=f'start_time >= "{baseline_start}" AND start_time < "{baseline_end}" AND feedback_scores.relevance is_not_empty',
+)
+
+def avg_score(traces, score_name):
+    scores = []
+    for t in traces:
+        if hasattr(t, 'feedback_scores') and t.feedback_scores:
+            for s in t.feedback_scores:
+                if s.name == score_name:
+                    scores.append(s.value)
+    return sum(scores) / len(scores) if scores else 0
+
+recent_avg = avg_score(recent_traces, 'relevance')
+baseline_avg = avg_score(baseline_traces, 'relevance')
+
+if recent_avg < baseline_avg * 0.9:  # 10% drop
+    print(f"⚠️  Quality alert: Relevance dropped from {baseline_avg:.2f} to {recent_avg:.2f}")
+else:
+    print(f"✓ Quality stable: {recent_avg:.2f} (baseline: {baseline_avg:.2f})")
+```
+
+### Identify Problematic Patterns
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Find traces with low scores
+low_quality_traces = client.search_traces(
+    project_name="production-app",
+    filter_string='feedback_scores.relevance < 0.5',
+    max_results=100,
+)
+
+print(f"Found {len(low_quality_traces)} low-quality traces")
+
+# Analyze common patterns
+from collections import Counter
+
+models = Counter(t.model for t in low_quality_traces if t.model)
+tags = Counter(tag for t in low_quality_traces if t.tags for tag in t.tags)
+
+print("\nMost common models in low-quality traces:")
+for model, count in models.most_common(5):
+    print(f"  {model}: {count}")
+
+print("\nMost common tags in low-quality traces:")
+for tag, count in tags.most_common(5):
+    print(f"  {tag}: {count}")
+```
+
+## Best Practices
+
+<Card title="Start with High-Value Metrics" icon="bullseye">
+  Focus on metrics that directly impact your users (relevance, accuracy, moderation) before adding more metrics.
+</Card>
+
+<Card title="Implement Sampling Wisely" icon="chart-pie">
+  For high-volume apps, use stratified sampling to ensure coverage across different models, features, or user segments.
+</Card>
+
+<Card title="Set Clear Thresholds" icon="sliders">
+  Define quality thresholds based on your baselines and user requirements, not arbitrary values.
+</Card>
+
+<Card title="Monitor Metric Costs" icon="dollar-sign">
+  LLM-as-a-Judge metrics incur API costs. Track your evaluation costs and adjust sampling as needed.
+</Card>
+
+<Card title="Validate Metrics" icon="check-circle">
+  Regularly validate that your automated metrics align with human judgment by spot-checking scored traces.
+</Card>
+
+<Warning>
+LLM-as-a-Judge metrics are powerful but not perfect. Always combine automated evaluation with human review for critical applications.
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Feedback Scores" icon="star" href="/production/feedback-scores">
+    Learn more about working with feedback scores
+  </Card>
+  <Card title="Metrics Overview" icon="calculator" href="/evaluation/metrics/overview">
+    Explore all available LLM-as-a-Judge metrics
+  </Card>
+  <Card title="Dashboards" icon="chart-line" href="/production/dashboards">
+    Visualize your evaluation results in dashboards
+  </Card>
+  <Card title="Datasets" icon="database" href="/evaluation/datasets">
+    Create datasets from production data for evaluation
+  </Card>
+</CardGroup>

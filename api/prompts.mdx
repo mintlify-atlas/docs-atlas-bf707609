@@ -1,0 +1,550 @@
+---
+title: "Prompts"
+description: "API endpoints for managing prompts and prompt versions"
+---
+
+## Overview
+
+The Prompts API allows you to version and manage your prompts in Opik. Each prompt can have multiple versions, and you can tag specific versions for easy reference.
+
+## Endpoints
+
+### List Prompts
+
+<CodeGroup>
+
+```bash GET /v1/private/prompts
+curl -X GET 'http://localhost:5173/api/v1/private/prompts?page=1&size=10' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve a paginated list of prompts.
+
+**Query Parameters:**
+
+<ParamField query="page" type="integer" default="1">
+  Page number (minimum: 1)
+</ParamField>
+
+<ParamField query="size" type="integer" default="10">
+  Number of items per page (minimum: 1)
+</ParamField>
+
+<ParamField query="name" type="string">
+  Filter prompts by name (partial match, case insensitive)
+</ParamField>
+
+<ParamField query="sorting" type="string">
+  Sorting criteria
+</ParamField>
+
+<ParamField query="filters" type="string">
+  Filter criteria in JSON format
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "content": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "chat-assistant",
+      "description": "Assistant prompt for customer support",
+      "created_at": "2024-03-14T10:30:00Z",
+      "last_updated_at": "2024-03-14T10:30:00Z",
+      "version_count": 5
+    }
+  ],
+  "page": 1,
+  "size": 10,
+  "total": 15
+}
+```
+
+### Create Prompt
+
+<CodeGroup>
+
+```bash POST /v1/private/prompts
+curl -X POST 'http://localhost:5173/api/v1/private/prompts' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "chat-assistant",
+    "description": "Assistant prompt for customer support"
+  }'
+```
+
+</CodeGroup>
+
+Create a new prompt.
+
+**Request Body:**
+
+<ParamField body="name" type="string" required>
+  Unique prompt name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional prompt description
+</ParamField>
+
+**Response:**
+
+<ResponseField name="201" type="Created">
+  Prompt created successfully. The `Location` header contains the prompt URL.
+</ResponseField>
+
+<ResponseField name="409" type="Conflict">
+  Prompt with this name already exists
+</ResponseField>
+
+### Get Prompt by ID
+
+<CodeGroup>
+
+```bash GET /v1/private/prompts/{id}
+curl -X GET 'http://localhost:5173/api/v1/private/prompts/550e8400-e29b-41d4-a716-446655440000' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve a specific prompt by ID.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Prompt ID
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "chat-assistant",
+  "description": "Assistant prompt for customer support",
+  "created_at": "2024-03-14T10:30:00Z",
+  "last_updated_at": "2024-03-14T10:30:00Z",
+  "latest_version": {
+    "id": "660e8400-e29b-41d4-a716-446655440000",
+    "commit": "abc123def456",
+    "template": "You are a helpful assistant. Answer: {{question}}",
+    "created_at": "2024-03-14T10:30:00Z"
+  }
+}
+```
+
+### Update Prompt
+
+<CodeGroup>
+
+```bash PUT /v1/private/prompts/{id}
+curl -X PUT 'http://localhost:5173/api/v1/private/prompts/550e8400-e29b-41d4-a716-446655440000' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "support-assistant",
+    "description": "Updated description"
+  }'
+```
+
+</CodeGroup>
+
+Update a prompt's metadata.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Prompt ID
+</ParamField>
+
+**Request Body:**
+
+<ParamField body="name" type="string">
+  Updated prompt name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated description
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Prompt updated successfully
+</ResponseField>
+
+### Delete Prompt
+
+<CodeGroup>
+
+```bash POST /v1/private/prompts/delete
+curl -X POST 'http://localhost:5173/api/v1/private/prompts/delete' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "ids": ["550e8400-e29b-41d4-a716-446655440000"]
+  }'
+```
+
+</CodeGroup>
+
+Delete one or more prompts.
+
+**Request Body:**
+
+<ParamField body="ids" type="array" required>
+  Array of prompt IDs to delete
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Prompts deleted successfully
+</ResponseField>
+
+## Prompt Versions
+
+### Create Prompt Version
+
+<CodeGroup>
+
+```bash POST /v1/private/prompts/versions
+curl -X POST 'http://localhost:5173/api/v1/private/prompts/versions' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+    "template": "You are a helpful assistant. Question: {{question}}\nAnswer:",
+    "metadata": {
+      "model": "gpt-4",
+      "temperature": 0.7
+    },
+    "commit_message": "Updated prompt template"
+  }'
+```
+
+</CodeGroup>
+
+Create a new version of a prompt.
+
+**Request Body:**
+
+<ParamField body="prompt_id" type="string" format="uuid" required>
+  Prompt ID to create a version for
+</ParamField>
+
+<ParamField body="template" type="string" required>
+  Prompt template content (can include variables like {{variable}})
+</ParamField>
+
+<ParamField body="metadata" type="object">
+  Optional metadata (e.g., model configuration)
+</ParamField>
+
+<ParamField body="commit_message" type="string">
+  Optional commit message describing the changes
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440000",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "commit": "abc123def456",
+  "template": "You are a helpful assistant. Question: {{question}}\nAnswer:",
+  "metadata": {
+    "model": "gpt-4",
+    "temperature": 0.7
+  },
+  "commit_message": "Updated prompt template",
+  "created_at": "2024-03-14T10:30:00Z"
+}
+```
+
+<ResponseField name="200" type="OK">
+  Prompt version created successfully
+</ResponseField>
+
+<ResponseField name="409" type="Conflict">
+  Version with identical content already exists
+</ResponseField>
+
+### Get Prompt Versions
+
+<CodeGroup>
+
+```bash GET /v1/private/prompts/{id}/versions
+curl -X GET 'http://localhost:5173/api/v1/private/prompts/550e8400-e29b-41d4-a716-446655440000/versions?page=1&size=10' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve all versions of a prompt.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Prompt ID
+</ParamField>
+
+**Query Parameters:**
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+<ParamField query="size" type="integer" default="10">
+  Items per page
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "content": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440000",
+      "commit": "abc123def456",
+      "template": "You are a helpful assistant. Question: {{question}}\nAnswer:",
+      "metadata": {
+        "model": "gpt-4",
+        "temperature": 0.7
+      },
+      "tags": ["production"],
+      "commit_message": "Updated prompt template",
+      "created_at": "2024-03-14T10:30:00Z"
+    }
+  ],
+  "page": 1,
+  "size": 10,
+  "total": 5
+}
+```
+
+### Get Prompt Version by ID
+
+<CodeGroup>
+
+```bash GET /v1/private/prompts/versions/{versionId}
+curl -X GET 'http://localhost:5173/api/v1/private/prompts/versions/660e8400-e29b-41d4-a716-446655440000' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve a specific prompt version.
+
+**Path Parameters:**
+
+<ParamField path="versionId" type="string" format="uuid" required>
+  Prompt version ID
+</ParamField>
+
+**Response:**
+
+Returns the same prompt version object as shown above.
+
+### Get Prompt by Commit
+
+<CodeGroup>
+
+```bash GET /v1/private/prompts/by-commit/{commit}
+curl -X GET 'http://localhost:5173/api/v1/private/prompts/by-commit/abc123def456' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve a prompt version by its commit hash.
+
+**Path Parameters:**
+
+<ParamField path="commit" type="string" required>
+  Commit hash
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "id": "660e8400-e29b-41d4-a716-446655440000",
+  "prompt_id": "550e8400-e29b-41d4-a716-446655440000",
+  "commit": "abc123def456",
+  "template": "You are a helpful assistant. Question: {{question}}\nAnswer:",
+  "metadata": {
+    "model": "gpt-4",
+    "temperature": 0.7
+  },
+  "created_at": "2024-03-14T10:30:00Z"
+}
+```
+
+### Retrieve Prompts by Multiple Commits
+
+<CodeGroup>
+
+```bash POST /v1/private/prompts/retrieve-by-commits
+curl -X POST 'http://localhost:5173/api/v1/private/prompts/retrieve-by-commits' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "commits": ["abc123def456", "def456ghi789"]
+  }'
+```
+
+</CodeGroup>
+
+Retrieve multiple prompt versions by their commit hashes.
+
+**Request Body:**
+
+<ParamField body="commits" type="array" required>
+  Array of commit hashes
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "prompts": [
+    {
+      "commit": "abc123def456",
+      "template": "You are a helpful assistant. Question: {{question}}\nAnswer:",
+      "metadata": {"model": "gpt-4"}
+    },
+    {
+      "commit": "def456ghi789",
+      "template": "You are an expert. Question: {{question}}\nAnswer:",
+      "metadata": {"model": "gpt-4-turbo"}
+    }
+  ]
+}
+```
+
+### Update Prompt Versions
+
+<CodeGroup>
+
+```bash PATCH /v1/private/prompts/versions
+curl -X PATCH 'http://localhost:5173/api/v1/private/prompts/versions' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "versions": [
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440000",
+        "tags": ["production", "stable"]
+      }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+Update organizational properties of prompt versions. Core properties like template and metadata cannot be modified after creation.
+
+**Request Body:**
+
+<ParamField body="versions" type="array" required>
+  Array of version updates
+  
+  <Expandable title="Version Update">
+    <ParamField body="id" type="string" format="uuid" required>
+      Version ID
+    </ParamField>
+    
+    <ParamField body="tags" type="array">
+      Updated tags (null preserves existing, empty array clears)
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Prompt versions updated successfully
+</ResponseField>
+
+### Restore Prompt Version
+
+<CodeGroup>
+
+```bash POST /v1/private/prompts/{promptId}/versions/{versionId}/restore
+curl -X POST 'http://localhost:5173/api/v1/private/prompts/550e8400-e29b-41d4-a716-446655440000/versions/660e8400-e29b-41d4-a716-446655440000/restore' \
+  -H 'Content-Type: application/json'
+```
+
+</CodeGroup>
+
+Restore a previous prompt version by creating a new version with the same content.
+
+**Path Parameters:**
+
+<ParamField path="promptId" type="string" format="uuid" required>
+  Prompt ID
+</ParamField>
+
+<ParamField path="versionId" type="string" format="uuid" required>
+  Version ID to restore
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "id": "770e8400-e29b-41d4-a716-446655440000",
+  "commit": "ghi789jkl012",
+  "template": "You are a helpful assistant. Question: {{question}}\nAnswer:",
+  "commit_message": "Restored from version abc123def456",
+  "created_at": "2024-03-14T11:00:00Z"
+}
+```
+
+## Best Practices
+
+<Tip>
+  Use tags like 'production', 'staging', 'dev' to mark which version is deployed in each environment.
+</Tip>
+
+<Warning>
+  Prompt versions are immutable by design. Once created, the template and metadata cannot be changed.
+</Warning>
+
+### Recommendations
+
+1. **Version control** - Create a new version for every prompt change
+2. **Use descriptive commit messages** - Document why you made changes
+3. **Tag production versions** - Mark stable versions with tags
+4. **Include metadata** - Store model configuration alongside prompts
+5. **Reference by commit** - Use commit hashes for reproducibility
+6. **Test before deploying** - Validate new versions before tagging as production
+
+### Template Variables
+
+Prompt templates support variable substitution using double curly braces:
+
+```text
+You are a {{role}}. 
+
+Context: {{context}}
+
+Question: {{question}}
+
+Answer:
+```
+
+Variables can be:
+- Single words: `{{name}}`
+- Multi-word with underscores: `{{user_input}}`
+- Nested objects: `{{user.name}}`
+
+### Version Tags
+
+Common tagging strategies:
+
+- **Environment tags**: `production`, `staging`, `dev`
+- **Version tags**: `v1.0`, `v1.1`, `v2.0`
+- **Status tags**: `stable`, `experimental`, `deprecated`
+- **Feature tags**: `with-examples`, `concise`, `detailed`

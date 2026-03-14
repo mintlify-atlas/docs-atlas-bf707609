@@ -1,0 +1,639 @@
+---
+title: "Tracing"
+description: "Automatic and manual tracing for LLM applications with the Opik Python SDK"
+---
+
+Tracing allows you to capture the execution flow of your LLM applications, including function calls, inputs, outputs, and metadata. Opik provides both automatic tracing via decorators and manual tracing via the client API.
+
+## Automatic Tracing with @track
+
+The `@track` decorator is the easiest way to add tracing to your functions:
+
+```python
+import opik
+
+@opik.track
+def my_llm_function(question: str) -> str:
+    # Your LLM logic here
+    return f"Answer to: {question}"
+
+result = my_llm_function("What is Opik?")
+opik.flush_tracker()
+```
+
+### Basic Usage
+
+The decorator automatically captures:
+- Function inputs and outputs
+- Execution time
+- Error information (if any)
+- Nested function calls
+
+```python
+import opik
+
+@opik.track
+def retrieve_context(query: str) -> list:
+    # Retrieval logic
+    return ["context1", "context2"]
+
+@opik.track
+def generate_response(query: str, context: list) -> str:
+    # Generation logic
+    return "Generated response"
+
+@opik.track
+def rag_pipeline(query: str) -> str:
+    context = retrieve_context(query)
+    response = generate_response(query, context)
+    return response
+
+# Creates a trace with nested spans
+result = rag_pipeline("What is RAG?")
+opik.flush_tracker()
+```
+
+### Decorator Parameters
+
+<ParamField path="name" type="string">
+  Custom name for the span. If not provided, uses the function name
+</ParamField>
+
+<ParamField path="type" type="string" default="general">
+  The type of span: `general`, `llm`, `tool`, or `agent`
+</ParamField>
+
+<ParamField path="tags" type="list[string]">
+  Tags to associate with the span
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Additional metadata to log
+</ParamField>
+
+<ParamField path="capture_input" type="boolean" default="True">
+  Whether to capture function input arguments
+</ParamField>
+
+<ParamField path="capture_output" type="boolean" default="True">
+  Whether to capture function output
+</ParamField>
+
+<ParamField path="ignore_arguments" type="list[string]">
+  List of argument names to exclude from input capture (useful for sensitive data)
+</ParamField>
+
+<ParamField path="project_name" type="string">
+  Project name to log to (overrides client default)
+</ParamField>
+
+<ParamField path="flush" type="boolean" default="False">
+  Whether to flush data immediately after logging
+</ParamField>
+
+### Examples with Parameters
+
+#### Custom Name and Type
+
+```python
+import opik
+
+@opik.track(name="gpt-4-call", type="llm")
+def call_openai(prompt: str) -> str:
+    # OpenAI call
+    return "Response"
+```
+
+#### Tags and Metadata
+
+```python
+import opik
+
+@opik.track(
+    tags=["production", "v2"],
+    metadata={"model": "gpt-4", "temperature": 0.7}
+)
+def generate(prompt: str) -> str:
+    return "Generated text"
+```
+
+#### Ignore Sensitive Arguments
+
+```python
+import opik
+
+@opik.track(ignore_arguments=["api_key", "password"])
+def secure_function(query: str, api_key: str, password: str) -> str:
+    # api_key and password won't be logged
+    return "Result"
+```
+
+#### Disable Input/Output Capture
+
+```python
+import opik
+
+@opik.track(capture_input=False, capture_output=False)
+def private_function(data: str) -> str:
+    # Neither input nor output will be logged
+    return "Result"
+```
+
+## Manual Tracing
+
+For more control, you can manually create traces and spans:
+
+```python
+from opik import Opik
+
+client = Opik()
+
+# Create a trace
+trace = client.trace(
+    name="user-query",
+    input={"question": "What is AI?"},
+    metadata={"user_id": "123"}
+)
+
+# Create a span within the trace
+span = client.span(
+    trace_id=trace.id,
+    name="llm-call",
+    type="llm",
+    input={"prompt": "Explain AI"},
+    model="gpt-4",
+    provider="openai"
+)
+
+# Update span with output
+span.update(
+    output={"response": "AI is..."},
+    usage={"prompt_tokens": 10, "completion_tokens": 50}
+)
+
+# Update trace
+trace.update(
+    output={"answer": "AI is..."}
+)
+
+client.flush()
+```
+
+## Context Managers
+
+Use context managers for cleaner manual tracing:
+
+### start_as_current_trace
+
+```python
+import opik
+from opik import start_as_current_trace
+
+with start_as_current_trace(
+    name="my-workflow",
+    input={"query": "What is Opik?"},
+    tags=["production"]
+) as trace:
+    # Your code here
+    result = process_query("What is Opik?")
+    trace.update(output={"result": result})
+```
+
+### start_as_current_span
+
+```python
+import opik
+from opik import start_as_current_span
+
+@opik.track
+def my_function():
+    with start_as_current_span(
+        name="preprocessing",
+        input={"data": "raw data"}
+    ) as span:
+        # Preprocessing logic
+        processed = preprocess()
+        span.update(output={"processed": processed})
+    
+    # More logic here
+```
+
+## Updating Current Span/Trace
+
+Access and update the current span or trace using `opik_context`:
+
+```python
+import opik
+from opik import opik_context
+
+@opik.track
+def my_function(query: str):
+    # Update current span
+    opik_context.update_current_span(
+        tags=["important"],
+        metadata={"step": "processing"}
+    )
+    
+    # Update current trace
+    opik_context.update_current_trace(
+        tags=["user-query"],
+        metadata={"user_id": "123"}
+    )
+    
+    return "Result"
+```
+
+## Flushing Traces
+
+Ensure all traces are sent to the server:
+
+```python
+import opik
+
+# Flush with default timeout
+opik.flush_tracker()
+
+# Flush with custom timeout (seconds)
+opik.flush_tracker(timeout=60)
+```
+
+<Warning>
+  Always call `flush_tracker()` before your program exits to ensure all traces are sent. For long-running applications, consider flushing periodically.
+</Warning>
+
+## Span Types
+
+Opik supports different span types for better visualization:
+
+<Tabs>
+  <Tab title="General">
+    ```python
+    @opik.track(type="general")
+    def process_data(data):
+        return processed_data
+    ```
+    Default type for general-purpose operations.
+  </Tab>
+  
+  <Tab title="LLM">
+    ```python
+    @opik.track(type="llm")
+    def call_llm(prompt):
+        # LLM call
+        return response
+    ```
+    Used for LLM calls. Supports `model`, `provider`, and `usage` parameters.
+  </Tab>
+  
+  <Tab title="Tool">
+    ```python
+    @opik.track(type="tool")
+    def search_database(query):
+        # Tool execution
+        return results
+    ```
+    Used for tool/function calls in agent workflows.
+  </Tab>
+  
+  <Tab title="Agent">
+    ```python
+    @opik.track(type="agent")
+    def agent_step(task):
+        # Agent reasoning
+        return action
+    ```
+    Used for agent reasoning and decision-making steps.
+  </Tab>
+</Tabs>
+
+## LLM-Specific Tracking
+
+For LLM calls, provide additional context:
+
+```python
+import opik
+
+@opik.track(type="llm")
+def call_openai(prompt: str) -> str:
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    # Update span with LLM-specific info
+    opik_context.update_current_span(
+        model="gpt-4",
+        provider="openai",
+        usage={
+            "prompt_tokens": response.usage.prompt_tokens,
+            "completion_tokens": response.usage.completion_tokens,
+            "total_tokens": response.usage.total_tokens
+        }
+    )
+    
+    return response.choices[0].message.content
+```
+
+## Integration Wrappers
+
+Opik provides automatic tracing for popular frameworks:
+
+### OpenAI
+
+```python
+import opik
+from opik.integrations.openai import track_openai
+import openai
+
+# Wrap the OpenAI client
+openai_client = track_openai(openai.OpenAI())
+
+# All calls are automatically traced
+response = openai_client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello!"}]
+)
+```
+
+### LangChain
+
+```python
+from opik.integrations.langchain import OpikTracer
+from langchain.chains import LLMChain
+
+# Create tracer
+opik_tracer = OpikTracer()
+
+# Use in LangChain
+chain = LLMChain(llm=llm, prompt=prompt)
+result = chain.run("input", callbacks=[opik_tracer])
+```
+
+## Error Tracking
+
+Errors are automatically captured:
+
+```python
+import opik
+
+@opik.track
+def might_fail(input_data):
+    if not input_data:
+        raise ValueError("Input cannot be empty")
+    return process(input_data)
+
+try:
+    result = might_fail(None)
+except ValueError as e:
+    # Error is automatically logged to the span
+    print(f"Error: {e}")
+
+opik.flush_tracker()
+```
+
+The span will include error information:
+- Exception type
+- Error message
+- Stack trace
+
+## Async Support
+
+The `@track` decorator works with async functions:
+
+```python
+import opik
+import asyncio
+
+@opik.track
+async def async_llm_call(prompt: str) -> str:
+    # Async LLM call
+    response = await async_openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
+
+@opik.track
+async def async_pipeline(query: str) -> str:
+    result = await async_llm_call(query)
+    return result
+
+# Run async function
+result = asyncio.run(async_pipeline("What is async?"))
+opik.flush_tracker()
+```
+
+## Generator Support
+
+Track streaming responses:
+
+```python
+import opik
+
+@opik.track
+def streaming_llm(prompt: str):
+    for chunk in openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        stream=True
+    ):
+        yield chunk.choices[0].delta.content
+
+# Use the generator
+for token in streaming_llm("Tell me a story"):
+    print(token, end="")
+
+opik.flush_tracker()
+```
+
+## Distributed Tracing
+
+Pass trace context across services:
+
+```python
+import opik
+from opik import opik_context
+
+# Service A: Create trace and get headers
+@opik.track
+def service_a(query: str):
+    # Get distributed trace headers
+    headers = opik_context.get_distributed_trace_headers()
+    
+    # Pass headers to service B
+    response = requests.post(
+        "http://service-b/process",
+        json={"query": query},
+        headers=headers
+    )
+    return response.json()
+
+# Service B: Continue the trace
+@opik.track
+def service_b_handler(request):
+    # Extract headers from request
+    trace_headers = {
+        "opik-trace-id": request.headers.get("opik-trace-id"),
+        "opik-parent-span-id": request.headers.get("opik-parent-span-id")
+    }
+    
+    # Use headers to continue trace
+    opik_context.set_distributed_trace_headers(trace_headers)
+    
+    # This span will be part of the same trace
+    return process_query(request.json["query"])
+```
+
+## Dynamic Tracing Control
+
+Enable or disable tracing at runtime:
+
+```python
+import opik
+
+# Disable tracing globally
+opik.set_tracing_active(False)
+
+@opik.track
+def my_function():
+    # This won't be traced
+    return "result"
+
+# Re-enable tracing
+opik.set_tracing_active(True)
+
+@opik.track
+def my_other_function():
+    # This will be traced
+    return "result"
+
+# Check if tracing is active
+if opik.is_tracing_active():
+    print("Tracing is enabled")
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use descriptive names">
+    Give your traces and spans meaningful names that describe their purpose:
+    ```python
+    @opik.track(name="retrieval-from-vectordb")
+    def retrieve(query):
+        ...
+    ```
+  </Accordion>
+  
+  <Accordion title="Add relevant metadata">
+    Include metadata that helps debug and analyze:
+    ```python
+    @opik.track(
+        metadata={
+            "model": "gpt-4",
+            "temperature": 0.7,
+            "max_tokens": 1000
+        }
+    )
+    def generate(prompt):
+        ...
+    ```
+  </Accordion>
+  
+  <Accordion title="Use appropriate span types">
+    Choose the right span type for better visualization:
+    ```python
+    @opik.track(type="llm")  # For LLM calls
+    @opik.track(type="tool") # For tool executions
+    @opik.track(type="agent") # For agent steps
+    ```
+  </Accordion>
+  
+  <Accordion title="Protect sensitive data">
+    Use `ignore_arguments` for sensitive information:
+    ```python
+    @opik.track(ignore_arguments=["api_key", "password", "secret"])
+    def secure_function(query, api_key, password):
+        ...
+    ```
+  </Accordion>
+  
+  <Accordion title="Flush regularly">
+    In long-running applications, flush periodically:
+    ```python
+    # After processing a batch
+    process_batch(items)
+    opik.flush_tracker()
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Complete Example
+
+```python
+import opik
+from opik.integrations.openai import track_openai
+import openai
+
+# Configure Opik
+opik.configure(project_name="rag-system")
+
+# Wrap OpenAI client
+openai_client = track_openai(openai.OpenAI())
+
+@opik.track(type="tool", tags=["retrieval"])
+def retrieve_context(query: str) -> list:
+    # Simulate vector search
+    contexts = [
+        "Context 1 about the query",
+        "Context 2 about the query"
+    ]
+    return contexts
+
+@opik.track(type="llm", tags=["generation"])
+def generate_response(query: str, contexts: list) -> str:
+    prompt = f"Query: {query}\n\nContexts: {contexts}\n\nAnswer:"
+    
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    
+    return response.choices[0].message.content
+
+@opik.track(
+    name="rag-pipeline",
+    tags=["production"],
+    metadata={"version": "1.0"}
+)
+def rag_pipeline(query: str) -> str:
+    # Retrieve relevant contexts
+    contexts = retrieve_context(query)
+    
+    # Generate response
+    response = generate_response(query, contexts)
+    
+    # Update trace with final metadata
+    opik.opik_context.update_current_trace(
+        metadata={"num_contexts": len(contexts)}
+    )
+    
+    return response
+
+# Execute pipeline
+result = rag_pipeline("What is retrieval augmented generation?")
+print(result)
+
+# Flush traces
+opik.flush_tracker()
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/python/evaluation">
+    Learn how to evaluate your traced functions
+  </Card>
+  <Card title="Datasets" icon="database" href="/sdk/python/datasets">
+    Create datasets from your traces
+  </Card>
+</CardGroup>

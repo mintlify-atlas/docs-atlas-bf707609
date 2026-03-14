@@ -1,0 +1,529 @@
+---
+title: Evaluation
+description: Evaluate LLM applications with the Opik TypeScript SDK
+---
+
+The Opik TypeScript SDK provides a comprehensive evaluation framework for measuring and improving LLM application performance. You can evaluate custom tasks, prompts, and models using built-in or custom metrics.
+
+## Overview
+
+Opik offers two main evaluation approaches:
+
+1. **evaluate()**: Run custom tasks against datasets with scoring metrics
+2. **evaluatePrompt()**: Evaluate prompts using the AI SDK integration
+
+## The evaluate() Function
+
+Use `evaluate()` to run experiments with custom task functions.
+
+### Basic Usage
+
+```typescript
+import { Opik, evaluate } from "opik";
+import { ExactMatch } from "opik/evaluation/metrics";
+
+const client = new Opik();
+
+// Create a dataset
+const dataset = await client.createDataset("qa-dataset");
+await dataset.insert([
+  { input: "What is 2+2?", expected_output: "4" },
+  { input: "What is the capital of France?", expected_output: "Paris" },
+]);
+
+// Define your task
+const task = async (item: any) => {
+  // Your LLM logic here
+  const response = await callYourLLM(item.input);
+  return { output: response };
+};
+
+// Run evaluation
+const result = await evaluate({
+  dataset,
+  task,
+  scoringMetrics: [new ExactMatch()],
+  experimentName: "my-first-evaluation",
+});
+
+console.log("Aggregate scores:", result.aggregateScores);
+```
+
+### Evaluation Options
+
+<ParamField path="dataset" type="Dataset | DatasetVersion" required>
+  The dataset or dataset version to evaluate against.
+</ParamField>
+
+<ParamField path="task" type="EvaluationTask" required>
+  Function that takes a dataset item and returns output.
+  
+  ```typescript
+  type EvaluationTask<T> = (item: T) => Promise<{ output: any }> | { output: any };
+  ```
+</ParamField>
+
+<ParamField path="scoringMetrics" type="BaseMetric[]">
+  Array of metrics to evaluate performance.
+</ParamField>
+
+<ParamField path="experimentName" type="string">
+  Name for the evaluation experiment.
+</ParamField>
+
+<ParamField path="projectName" type="string">
+  Project to associate the experiment with.
+</ParamField>
+
+<ParamField path="experimentConfig" type="Record<string, unknown>">
+  Configuration metadata for the experiment.
+</ParamField>
+
+<ParamField path="prompts" type="Prompt[]">
+  Prompt objects to link with the experiment.
+</ParamField>
+
+<ParamField path="nbSamples" type="number">
+  Limit the number of samples to evaluate.
+</ParamField>
+
+<ParamField path="client" type="OpikClient">
+  Custom Opik client instance.
+</ParamField>
+
+<ParamField path="scoringKeyMapping" type="ScoringKeyMappingType">
+  Map dataset keys to metric input fields.
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Tags for the experiment.
+</ParamField>
+
+### Evaluation Result
+
+```typescript
+interface EvaluationResult {
+  experimentName: string;
+  totalItems: number;
+  aggregateScores: Record<string, number>;
+}
+```
+
+## Built-in Metrics
+
+Opik provides several categories of built-in metrics:
+
+### Heuristic Metrics
+
+Deterministic metrics that don't require LLM calls:
+
+<Tabs>
+  <Tab title="ExactMatch">
+    ```typescript
+    import { ExactMatch } from "opik/evaluation/metrics";
+
+    const metric = new ExactMatch();
+    ```
+
+    Checks if output exactly matches expected value.
+  </Tab>
+  <Tab title="Contains">
+    ```typescript
+    import { Contains } from "opik/evaluation/metrics";
+
+    const metric = new Contains();
+    ```
+
+    Checks if output contains expected substring.
+  </Tab>
+  <Tab title="RegexMatch">
+    ```typescript
+    import { RegexMatch } from "opik/evaluation/metrics";
+
+    const metric = new RegexMatch();
+    ```
+
+    Checks if output matches a regular expression.
+  </Tab>
+  <Tab title="IsJson">
+    ```typescript
+    import { IsJson } from "opik/evaluation/metrics";
+
+    const metric = new IsJson();
+    ```
+
+    Validates that output is valid JSON.
+  </Tab>
+</Tabs>
+
+### LLM Judge Metrics
+
+Metrics that use LLMs to evaluate quality:
+
+<Tabs>
+  <Tab title="Moderation">
+    ```typescript
+    import { Moderation } from "opik/evaluation/metrics";
+
+    const metric = new Moderation({
+      model: "gpt-4",
+      temperature: 0.0,
+      seed: 42,
+    });
+    ```
+
+    Checks for harmful, offensive, or policy-violating content.
+  </Tab>
+  <Tab title="Usefulness">
+    ```typescript
+    import { Usefulness } from "opik/evaluation/metrics";
+
+    const metric = new Usefulness({
+      model: "gpt-4",
+      temperature: 0.3,
+    });
+    ```
+
+    Evaluates how helpful and relevant the response is.
+  </Tab>
+  <Tab title="Hallucination">
+    ```typescript
+    import { Hallucination } from "opik/evaluation/metrics";
+
+    const metric = new Hallucination({
+      model: "gpt-4",
+      temperature: 0.0,
+    });
+    ```
+
+    Detects factual inconsistencies with provided context.
+  </Tab>
+  <Tab title="AnswerRelevance">
+    ```typescript
+    import { AnswerRelevance } from "opik/evaluation/metrics";
+
+    const metric = new AnswerRelevance({
+      model: "gpt-4",
+    });
+    ```
+
+    Measures how relevant the answer is to the question.
+  </Tab>
+</Tabs>
+
+### G-Eval Metrics
+
+Customizable LLM judge metrics using the G-Eval framework:
+
+```typescript
+import { GEval } from "opik/evaluation/metrics";
+
+const metric = new GEval({
+  name: "coherence",
+  taskDescription: "Evaluate the coherence of the text",
+  criteria: [
+    "The text flows naturally",
+    "Ideas are logically connected",
+    "Transitions are smooth",
+  ],
+  model: "gpt-4",
+});
+```
+
+**Preset G-Eval Metrics:**
+
+- `SummarizationConsistencyJudge`
+- `SummarizationCoherenceJudge`
+- `DialogueHelpfulnessJudge`
+- `QARelevanceJudge`
+- `DemographicBiasJudge`
+- `PoliticalBiasJudge`
+- `GenderBiasJudge`
+- `ReligiousBiasJudge`
+- `RegionalBiasJudge`
+- `AgentToolCorrectnessJudge`
+- `AgentTaskCompletionJudge`
+- `PromptUncertaintyJudge`
+- `ComplianceRiskJudge`
+
+## Custom Metrics
+
+Create custom metrics by extending `BaseMetric`:
+
+```typescript
+import { BaseMetric } from "opik/evaluation/metrics";
+
+class CustomMetric extends BaseMetric {
+  async score(data: {
+    input?: any;
+    output?: any;
+    expected_output?: any;
+    context?: any;
+  }): Promise<{ value: number; reason?: string }> {
+    // Your scoring logic
+    const score = calculateScore(data.output, data.expected_output);
+    
+    return {
+      value: score,
+      reason: "Explanation of the score",
+    };
+  }
+}
+
+const result = await evaluate({
+  dataset,
+  task,
+  scoringMetrics: [new CustomMetric()],
+});
+```
+
+## Scoring Key Mapping
+
+Map dataset keys to metric input fields:
+
+```typescript
+const result = await evaluate({
+  dataset,
+  task,
+  scoringMetrics: [new Hallucination()],
+  scoringKeyMapping: {
+    input: "question",
+    context: "retrieved_docs",
+    output: "answer",
+  },
+});
+```
+
+## Evaluating Prompts
+
+Use `evaluatePrompt()` to evaluate prompts with AI SDK integration:
+
+```typescript
+import { Opik, evaluatePrompt } from "opik";
+import { Usefulness, Moderation } from "opik/evaluation/metrics";
+
+const client = new Opik();
+
+// Create or get dataset
+const dataset = await client.getOrCreateDataset("support-queries");
+
+// Create a prompt
+const prompt = await client.createPrompt({
+  name: "support-assistant",
+  prompt: "You are a helpful assistant. User: {{query}}",
+  type: "mustache",
+});
+
+// Evaluate the prompt
+const result = await evaluatePrompt({
+  dataset,
+  messages: [
+    {
+      role: "user",
+      content: prompt.prompt,
+    },
+  ],
+  model: "gpt-4",
+  scoringMetrics: [new Usefulness(), new Moderation()],
+  experimentName: "support-assistant-v1",
+  prompts: [prompt],
+});
+
+console.log("Results:", result.aggregateScores);
+```
+
+### evaluatePrompt Options
+
+<ParamField path="dataset" type="Dataset | DatasetVersion" required>
+  Dataset to evaluate against.
+</ParamField>
+
+<ParamField path="messages" type="ChatMessage[]" required>
+  Chat messages with prompt template.
+</ParamField>
+
+<ParamField path="model" type="string" required>
+  Model to use for generation (e.g., "gpt-4").
+</ParamField>
+
+<ParamField path="scoringMetrics" type="BaseMetric[]">
+  Metrics to evaluate with.
+</ParamField>
+
+<ParamField path="experimentName" type="string">
+  Name for the experiment.
+</ParamField>
+
+<ParamField path="prompts" type="Prompt[]">
+  Prompt objects to link with the experiment.
+</ParamField>
+
+## Comparing Prompt Versions
+
+Compare multiple prompt versions:
+
+```typescript
+import { Opik, evaluatePrompt } from "opik";
+import { Usefulness } from "opik/evaluation/metrics";
+
+const client = new Opik();
+const dataset = await client.getDataset("qa-dataset");
+
+// Version 1
+const v1 = await client.createPrompt({
+  name: "qa-prompt",
+  prompt: "Answer: {{question}}",
+});
+
+const result1 = await evaluatePrompt({
+  dataset,
+  messages: [{ role: "user", content: v1.prompt }],
+  model: "gpt-4",
+  scoringMetrics: [new Usefulness()],
+  experimentName: "qa-v1",
+  prompts: [v1],
+});
+
+// Version 2 (improved)
+const v2 = await client.createPrompt({
+  name: "qa-prompt",
+  prompt: "Provide a clear and concise answer to: {{question}}",
+});
+
+const result2 = await evaluatePrompt({
+  dataset,
+  messages: [{ role: "user", content: v2.prompt }],
+  model: "gpt-4",
+  scoringMetrics: [new Usefulness()],
+  experimentName: "qa-v2",
+  prompts: [v2],
+});
+
+// Compare results
+console.log("V1 Usefulness:", result1.aggregateScores.usefulness);
+console.log("V2 Usefulness:", result2.aggregateScores.usefulness);
+```
+
+## Advanced Example: RAG Evaluation
+
+Evaluate a Retrieval-Augmented Generation system:
+
+```typescript
+import { Opik, evaluate } from "opik";
+import { AnswerRelevance, Hallucination } from "opik/evaluation/metrics";
+
+const client = new Opik();
+
+// Define your RAG task
+const ragTask = async (item: any) => {
+  // 1. Retrieve relevant documents
+  const documents = await retrieveDocuments(item.question);
+  
+  // 2. Generate answer with context
+  const answer = await generateAnswer(item.question, documents);
+  
+  return {
+    output: answer,
+    context: documents,
+  };
+};
+
+// Create dataset
+const dataset = await client.createDataset("rag-eval");
+await dataset.insert([
+  {
+    question: "What is the capital of France?",
+    expected_output: "Paris",
+  },
+  {
+    question: "Who wrote Romeo and Juliet?",
+    expected_output: "William Shakespeare",
+  },
+]);
+
+// Evaluate with multiple metrics
+const result = await evaluate({
+  dataset,
+  task: ragTask,
+  scoringMetrics: [
+    new AnswerRelevance({ model: "gpt-4" }),
+    new Hallucination({ model: "gpt-4" }),
+  ],
+  experimentName: "rag-baseline",
+  experimentConfig: {
+    retrievalMethod: "semantic-search",
+    topK: 5,
+    model: "gpt-4",
+  },
+  tags: ["rag", "baseline"],
+});
+
+console.log("Evaluation complete:");
+console.log("- Answer Relevance:", result.aggregateScores.answer_relevance);
+console.log("- Hallucination:", result.aggregateScores.hallucination);
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Start with heuristic metrics">
+    Use fast, deterministic metrics like `ExactMatch` or `Contains` for quick iterations:
+
+    ```typescript
+    scoringMetrics: [new ExactMatch(), new Contains()]
+    ```
+  </Step>
+
+  <Step title="Add LLM judges for quality">
+    Use LLM-based metrics to evaluate subjective qualities:
+
+    ```typescript
+    scoringMetrics: [
+      new ExactMatch(),
+      new Usefulness({ model: "gpt-4" }),
+      new AnswerRelevance({ model: "gpt-4" }),
+    ]
+    ```
+  </Step>
+
+  <Step title="Version your datasets">
+    Use dataset versions to track changes over time:
+
+    ```typescript
+    const version = await dataset.createVersion("v1.0");
+    const result = await evaluate({ dataset: version, ... });
+    ```
+  </Step>
+
+  <Step title="Track experiment configuration">
+    Include all relevant parameters in experiment config:
+
+    ```typescript
+    experimentConfig: {
+      model: "gpt-4",
+      temperature: 0.7,
+      maxTokens: 500,
+      promptVersion: prompt.commit,
+    }
+    ```
+  </Step>
+
+  <Step title="Use meaningful experiment names">
+    Make experiments easy to identify:
+
+    ```typescript
+    experimentName: `${modelName}-${feature}-${date}"
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Metrics Reference" icon="ruler" href="/evaluation/metrics">
+    Explore all available metrics
+  </Card>
+  <Card title="Client API" icon="code" href="/sdk/typescript/client">
+    View the complete client API
+  </Card>
+</CardGroup>

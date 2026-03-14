@@ -1,0 +1,579 @@
+---
+title: "Annotation Queues"
+description: "Collect human feedback and annotations on traces and threads with Opik Annotation Queues"
+---
+
+Annotation Queues enable you to systematically collect human feedback on your LLM outputs. They provide a structured workflow for reviewing traces and threads, collecting annotations, and improving your models based on real-world performance.
+
+## Overview
+
+Annotation Queues allow you to:
+
+- **Organize Review Workflows**: Create queues for specific review tasks
+- **Collect Structured Feedback**: Define feedback schemas with custom definitions
+- **Track Progress**: Monitor annotation completion and queue status
+- **Enable Collaboration**: Multiple reviewers can work on the same queue
+- **Support Different Scopes**: Create queues for individual traces or conversation threads
+
+## Queue Types
+
+Opik supports two types of annotation queues:
+
+<Tabs>
+  <Tab title="Traces Annotation Queue">
+    For reviewing individual LLM traces (single requests/responses).
+    
+    ```python
+    import opik
+    
+    client = opik.Opik(project_name="my-project")
+    
+    queue = client.create_traces_annotation_queue(
+        name="trace-review",
+        description="Review individual customer interactions",
+        instructions="Rate the helpfulness of each response"
+    )
+    ```
+    
+    **Use cases:**
+    - Single-turn interactions
+    - Classification tasks
+    - Quality spot checks
+  </Tab>
+  
+  <Tab title="Threads Annotation Queue">
+    For reviewing entire conversation threads (multi-turn interactions).
+    
+    ```python
+    import opik
+    
+    client = opik.Opik(project_name="my-project")
+    
+    queue = client.create_threads_annotation_queue(
+        name="thread-review",
+        description="Review full customer conversations",
+        instructions="Evaluate conversation quality and resolution"
+    )
+    ```
+    
+    **Use cases:**
+    - Multi-turn conversations
+    - End-to-end dialogue evaluation
+    - Conversation flow analysis
+  </Tab>
+</Tabs>
+
+## Creating Annotation Queues
+
+### Basic Queue Creation
+
+```python
+import opik
+
+client = opik.Opik(project_name="customer-support")
+
+# Create a traces queue
+queue = client.create_traces_annotation_queue(
+    name="quality-review",
+    description="Review response quality",
+    instructions="Rate each response on helpfulness (1-5)",
+    comments_enabled=True
+)
+
+print(f"Queue ID: {queue.id}")
+print(f"Queue name: {queue.name}")
+```
+
+### Queue with Feedback Definitions
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+
+# Create queue with specific feedback criteria
+queue = client.create_traces_annotation_queue(
+    name="detailed-review",
+    description="Comprehensive quality assessment",
+    instructions="""
+    Please evaluate each response on:
+    1. Accuracy: Is the information correct?
+    2. Helpfulness: Does it address the user's question?
+    3. Tone: Is it professional and friendly?
+    """,
+    comments_enabled=True,
+    feedback_definition_names=[
+        "accuracy",
+        "helpfulness",
+        "tone"
+    ]
+)
+```
+
+### Queue Configuration
+
+<ParamField path="name" type="string" required>
+  Unique name for the annotation queue
+</ParamField>
+
+<ParamField path="project_name" type="string">
+  Project to associate the queue with. Uses client's default project if not specified.
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description of the queue's purpose
+</ParamField>
+
+<ParamField path="instructions" type="string">
+  Optional instructions for reviewers
+</ParamField>
+
+<ParamField path="comments_enabled" type="bool">
+  Whether reviewers can add comments to items
+</ParamField>
+
+<ParamField path="feedback_definition_names" type="list">
+  List of feedback definition names to use for annotations
+</ParamField>
+
+## Adding Items to Queues
+
+### Adding Traces
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+
+# Get the annotation queue
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+
+# Search for traces to add
+traces = client.search_traces(
+    project_name="my-project",
+    filter_string="metadata.needs_review = true"
+)
+
+# Add traces to queue
+queue.add_traces(traces)
+
+print(f"Queue now has {queue.items_count} items")
+```
+
+### Adding Threads
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+
+# Get threads annotation queue
+queue = client.get_threads_annotation_queue(queue_id="queue-456")
+
+# Search for threads
+threads = client.search_threads(
+    project_name="my-project",
+    filter_string="metadata.conversation_complete = true"
+)
+
+# Add threads to queue
+queue.add_threads(threads)
+
+print(f"Added {len(threads)} threads to queue")
+```
+
+<Info>
+Both `add_traces()` and `add_threads()` accept lists. For a single item, wrap it in a list: `[trace]` or `[thread]`.
+</Info>
+
+### Batch Operations
+
+The SDK automatically handles batching for large operations:
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+
+# Get many traces (automatically batched)
+traces = client.search_traces(
+    project_name="my-project",
+    limit=1000
+)
+
+# Add all at once - SDK handles batching internally
+queue.add_traces(traces)
+```
+
+## Removing Items from Queues
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+
+# Search for specific traces to remove
+traces = client.search_traces(
+    project_name="my-project",
+    filter_string="metadata.reviewed = true"
+)
+
+# Remove from queue
+queue.remove_traces(traces)
+
+print(f"Removed {len(traces)} traces")
+print(f"Queue now has {queue.items_count} items")
+```
+
+## Managing Queues
+
+### Retrieving Queues
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get traces queue by ID
+traces_queue = client.get_traces_annotation_queue(
+    queue_id="queue-123"
+)
+
+# Get threads queue by ID
+threads_queue = client.get_threads_annotation_queue(
+    queue_id="queue-456"
+)
+
+print(f"Traces queue: {traces_queue.name}")
+print(f"Threads queue: {threads_queue.name}")
+```
+
+### Updating Queue Properties
+
+```python
+import opik
+
+client = opik.Opik()
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+
+# Update queue configuration
+queue.update(
+    name="updated-quality-review",
+    description="Updated description",
+    instructions="New instructions for reviewers",
+    comments_enabled=False,
+    feedback_definition_names=["quality", "accuracy"]
+)
+
+print(f"Updated queue: {queue.name}")
+```
+
+### Deleting Queues
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Delete by queue object
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+queue.delete()
+
+# Or delete directly by ID
+client.delete_annotation_queue(queue_id="queue-456")
+```
+
+## Queue Properties
+
+Access queue information:
+
+```python
+import opik
+
+client = opik.Opik()
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+
+# Core properties
+print(f"ID: {queue.id}")
+print(f"Name: {queue.name}")
+print(f"Description: {queue.description}")
+print(f"Instructions: {queue.instructions}")
+print(f"Project ID: {queue.project_id}")
+print(f"Scope: {queue.scope}")  # 'trace' or 'thread'
+
+# Configuration
+print(f"Comments enabled: {queue.comments_enabled}")
+print(f"Feedback definitions: {queue.feedback_definition_names}")
+
+# Status
+print(f"Items in queue: {queue.items_count}")
+```
+
+<Note>
+The `items_count` property is cached locally. It will be fetched from the backend if not already cached.
+</Note>
+
+## Common Workflows
+
+### Quality Review Workflow
+
+```python
+import opik
+
+client = opik.Opik(project_name="customer-support")
+
+# Create review queue
+queue = client.create_traces_annotation_queue(
+    name="daily-quality-review",
+    description="Daily random sample quality check",
+    instructions="Rate response quality on a scale of 1-5",
+    comments_enabled=True,
+    feedback_definition_names=["quality_score"]
+)
+
+# Get random sample of recent traces
+traces = client.search_traces(
+    project_name="customer-support",
+    filter_string="created_at > '2024-03-14' AND metadata.reviewed != true",
+    limit=50
+)
+
+# Add to queue
+queue.add_traces(traces)
+
+print(f"Created review queue with {queue.items_count} items")
+print(f"Queue ID: {queue.id}")
+```
+
+### Failed Interaction Review
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+
+# Create queue for failed interactions
+queue = client.create_traces_annotation_queue(
+    name="failure-analysis",
+    description="Review failed or low-rated interactions",
+    instructions="""
+    Analyze why this interaction failed:
+    1. Was the input unclear?
+    2. Did the model misunderstand?
+    3. Was the output incorrect?
+    """,
+    comments_enabled=True
+)
+
+# Find failed interactions
+failed_traces = client.search_traces(
+    project_name="my-project",
+    filter_string="feedback_scores.user_rating < 3.0"
+)
+
+queue.add_traces(failed_traces)
+```
+
+### Conversation Review Workflow
+
+```python
+import opik
+
+client = opik.Opik(project_name="chatbot")
+
+# Create threads queue for conversation review
+queue = client.create_threads_annotation_queue(
+    name="conversation-review",
+    description="Review complete customer conversations",
+    instructions="""
+    Evaluate the entire conversation:
+    - Was the customer's issue resolved?
+    - Was the bot helpful throughout?
+    - Were there any errors or confusion?
+    """,
+    comments_enabled=True,
+    feedback_definition_names=[
+        "resolution_success",
+        "conversation_quality"
+    ]
+)
+
+# Get completed conversations from the last week
+threads = client.search_threads(
+    project_name="chatbot",
+    filter_string="metadata.status = 'completed' AND created_at > '2024-03-07'"
+)
+
+queue.add_threads(threads)
+print(f"Added {len(threads)} conversations for review")
+```
+
+### Progressive Review
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+queue = client.get_traces_annotation_queue(queue_id="queue-123")
+
+# Continuously add new items as they're created
+while True:
+    # Find new unreviewed traces
+    new_traces = client.search_traces(
+        project_name="my-project",
+        filter_string="metadata.in_review_queue != true AND created_at > '2024-03-14'",
+        limit=100
+    )
+    
+    if new_traces:
+        # Add to queue
+        queue.add_traces(new_traces)
+        
+        # Mark as added to prevent duplicates
+        for trace in new_traces:
+            client.update_trace(
+                trace_id=trace.id,
+                metadata={"in_review_queue": True}
+            )
+        
+        print(f"Added {len(new_traces)} new traces to queue")
+    
+    # Check periodically (e.g., every hour)
+    import time
+    time.sleep(3600)
+```
+
+## Integration Patterns
+
+### With Feedback Collection
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+
+# Create queue with feedback definitions
+queue = client.create_traces_annotation_queue(
+    name="feedback-collection",
+    feedback_definition_names=[
+        "accuracy",
+        "helpfulness",
+        "safety"
+    ]
+)
+
+# Add traces that received user feedback
+traces_with_feedback = client.search_traces(
+    project_name="my-project",
+    filter_string="feedback_scores.user_rating EXISTS"
+)
+
+queue.add_traces(traces_with_feedback)
+```
+
+### With Model Evaluation
+
+```python
+import opik
+from opik.evaluation import evaluate
+
+client = opik.Opik(project_name="my-project")
+
+# Run evaluation
+eval_result = evaluate(
+    dataset=dataset,
+    task=my_task,
+    scoring_metrics=[accuracy_metric],
+    experiment_name="model-v2-eval"
+)
+
+# Create queue for low-scoring items
+queue = client.create_traces_annotation_queue(
+    name="low-score-review",
+    description="Review items that scored below threshold"
+)
+
+# Find low-scoring traces from evaluation
+low_score_traces = client.search_traces(
+    project_name="my-project",
+    filter_string=f"experiment_name = 'model-v2-eval' AND feedback_scores.accuracy < 0.7"
+)
+
+queue.add_traces(low_score_traces)
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Clear Instructions" icon="book-open">
+    Provide detailed, actionable instructions for reviewers
+  </Card>
+  
+  <Card title="Focused Queues" icon="bullseye">
+    Create separate queues for different review tasks
+  </Card>
+  
+  <Card title="Use Metadata" icon="tag">
+    Tag items added to queues to prevent duplicates
+  </Card>
+  
+  <Card title="Monitor Progress" icon="chart-line">
+    Regularly check `items_count` to track review progress
+  </Card>
+  
+  <Card title="Batch Strategically" icon="layer-group">
+    Add items in reasonable batches for efficient review
+  </Card>
+  
+  <Card title="Enable Comments" icon="comment">
+    Allow comments for rich feedback and edge cases
+  </Card>
+</CardGroup>
+
+## Error Handling
+
+```python
+import opik
+import opik.exceptions
+
+client = opik.Opik()
+
+try:
+    # Add traces to queue
+    queue = client.get_traces_annotation_queue(queue_id="queue-123")
+    queue.add_traces(traces)
+    
+except opik.exceptions.OpikException as e:
+    if "no id" in str(e).lower():
+        print("Error: One or more trace objects have no ID")
+    else:
+        print(f"Error adding traces: {e}")
+
+try:
+    # Wrong queue type
+    queue = client.get_threads_annotation_queue(queue_id="trace-queue-id")
+except opik.exceptions.OpikException as e:
+    print(f"Queue type mismatch: {e}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tracing" icon="chart-network" href="/tracing/log-traces">
+    Learn how to create traces for annotation
+  </Card>
+  
+  <Card title="Feedback" icon="star" href="/production/feedback-scores">
+    Add feedback scores to your traces
+  </Card>
+  
+  <Card title="Evaluation" icon="clipboard-check" href="/evaluation/overview">
+    Evaluate LLM performance systematically
+  </Card>
+  
+  <Card title="Prompt Management" icon="folder" href="/advanced/prompt-management">
+    Manage prompts based on annotation insights
+  </Card>
+</CardGroup>

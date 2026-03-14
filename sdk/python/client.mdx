@@ -1,0 +1,569 @@
+---
+title: "Opik Client"
+description: "Complete API reference for the Opik Python client"
+---
+
+The `Opik` class is the main interface for interacting with the Opik platform. It provides methods for creating traces, spans, managing datasets, and running experiments.
+
+## Creating a Client
+
+```python
+from opik import Opik
+
+client = Opik(
+    project_name="my-project",
+    workspace="my-workspace",
+    host="https://www.comet.com/opik/api",
+    api_key="your-api-key"
+)
+```
+
+### Constructor Parameters
+
+<ParamField path="project_name" type="string">
+  The name of the project. If not provided, traces and spans will be logged to the `Default Project`
+</ParamField>
+
+<ParamField path="workspace" type="string">
+  The workspace name. If not provided, `default` will be used
+</ParamField>
+
+<ParamField path="host" type="string">
+  The Opik server URL. Defaults to `https://www.comet.com/opik/api`
+</ParamField>
+
+<ParamField path="api_key" type="string">
+  API key for authentication. This parameter is ignored for local installations
+</ParamField>
+
+<ParamField path="_use_batching" type="boolean" default="False">
+  Internal parameter for batching. Enabling it can lead to data loss. Not recommended for general use
+</ParamField>
+
+## Properties
+
+### config
+
+Returns a read-only copy of the client configuration:
+
+```python
+config = client.config
+print(config.url_override)
+print(config.workspace)
+```
+
+<ResponseField name="config" type="OpikConfig">
+  Read-only copy of the OpikConfig object containing URL, workspace, API key, and other settings
+</ResponseField>
+
+### project_name
+
+Returns the current project name:
+
+```python
+project_name = client.project_name
+print(f"Logging to project: {project_name}")
+```
+
+<ResponseField name="project_name" type="string">
+  The name of the project associated with this client instance
+</ResponseField>
+
+### rest_client
+
+Provides direct access to the underlying REST API client:
+
+```python
+rest_client = client.rest_client
+# Use with caution - not guaranteed to be backward compatible
+```
+
+<Warning>
+  The `rest_client` property exposes the internal REST API client. While convenient for advanced use cases, it's not guaranteed to be backward compatible across SDK versions.
+</Warning>
+
+## Tracing Methods
+
+### trace()
+
+Create and log a new trace:
+
+```python
+trace = client.trace(
+    name="my-trace",
+    input={"question": "What is AI?"},
+    output={"answer": "AI is..."},
+    metadata={"model": "gpt-4"},
+    tags=["production", "v2"]
+)
+```
+
+#### Parameters
+
+<ParamField path="id" type="string">
+  Unique identifier for the trace. Must be a valid UUIDv7. If not provided, one will be generated
+</ParamField>
+
+<ParamField path="name" type="string">
+  The name of the trace
+</ParamField>
+
+<ParamField path="start_time" type="datetime.datetime">
+  The start time of the trace. Defaults to current local time
+</ParamField>
+
+<ParamField path="end_time" type="datetime.datetime">
+  The end time of the trace
+</ParamField>
+
+<ParamField path="input" type="dict">
+  Input data for the trace. Can be any JSON-serializable object
+</ParamField>
+
+<ParamField path="output" type="dict">
+  Output data for the trace. Can be any JSON-serializable object
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Additional metadata. Can be any JSON-serializable object
+</ParamField>
+
+<ParamField path="tags" type="list[string]">
+  Tags associated with the trace
+</ParamField>
+
+<ParamField path="feedback_scores" type="list[dict]">
+  List of feedback score dictionaries. Each dict should have `name` and `value` keys
+</ParamField>
+
+<ParamField path="project_name" type="string">
+  Project name. If not set, uses the client's default project
+</ParamField>
+
+<ParamField path="error_info" type="dict">
+  Error information dictionary with `exception_type`, `message`, and `traceback` keys
+</ParamField>
+
+<ParamField path="thread_id" type="string">
+  Used to group multiple traces into a thread. Must be unique per project
+</ParamField>
+
+<ParamField path="attachments" type="list[Attachment]">
+  List of attachments to upload with the trace
+</ParamField>
+
+#### Returns
+
+<ResponseField name="trace" type="Trace">
+  A Trace object that can be used to add spans and update the trace
+</ResponseField>
+
+### span()
+
+Create and log a new span:
+
+```python
+span = client.span(
+    trace_id="trace-uuid",
+    name="llm-call",
+    type="llm",
+    input={"prompt": "Hello"},
+    output={"response": "Hi there!"},
+    model="gpt-4",
+    provider="openai",
+    usage={"prompt_tokens": 10, "completion_tokens": 15}
+)
+```
+
+#### Parameters
+
+<ParamField path="trace_id" type="string">
+  The trace ID this span belongs to. If not provided, a new trace will be created
+</ParamField>
+
+<ParamField path="id" type="string">
+  Unique identifier for the span. Must be a valid UUIDv7. If not provided, one will be generated
+</ParamField>
+
+<ParamField path="parent_span_id" type="string">
+  The parent span ID for nested spans
+</ParamField>
+
+<ParamField path="name" type="string">
+  The name of the span
+</ParamField>
+
+<ParamField path="type" type="string" default="general">
+  The type of span: `general`, `llm`, `tool`, or `agent`
+</ParamField>
+
+<ParamField path="start_time" type="datetime.datetime">
+  The start time. Defaults to current local time
+</ParamField>
+
+<ParamField path="end_time" type="datetime.datetime">
+  The end time of the span
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Additional metadata
+</ParamField>
+
+<ParamField path="input" type="dict">
+  Input data for the span
+</ParamField>
+
+<ParamField path="output" type="dict">
+  Output data for the span
+</ParamField>
+
+<ParamField path="tags" type="list[string]">
+  Tags associated with the span
+</ParamField>
+
+<ParamField path="usage" type="dict | OpikUsage">
+  Token usage data. Should include `prompt_tokens`, `completion_tokens`, and `total_tokens` for proper UI display
+</ParamField>
+
+<ParamField path="model" type="string">
+  The LLM model name (use with `type="llm"`)
+</ParamField>
+
+<ParamField path="provider" type="string | LLMProvider">
+  The LLM provider. See `opik.LLMProvider` enum for supported providers
+</ParamField>
+
+<ParamField path="error_info" type="dict">
+  Error information if the span failed
+</ParamField>
+
+<ParamField path="total_cost" type="float">
+  The cost in USD. Takes priority over calculated cost from usage
+</ParamField>
+
+<ParamField path="attachments" type="list[Attachment]">
+  List of attachments to upload
+</ParamField>
+
+#### Returns
+
+<ResponseField name="span" type="Span">
+  A Span object that can be updated
+</ResponseField>
+
+## Dataset Methods
+
+### create_dataset()
+
+Create a new dataset:
+
+```python
+dataset = client.create_dataset(
+    name="evaluation-dataset",
+    description="Dataset for model evaluation"
+)
+```
+
+<ParamField path="name" type="string" required>
+  The name of the dataset
+</ParamField>
+
+<ParamField path="description" type="string">
+  Optional description of the dataset
+</ParamField>
+
+<ResponseField name="dataset" type="Dataset">
+  A Dataset object for adding items and running evaluations
+</ResponseField>
+
+### get_dataset()
+
+Retrieve an existing dataset by name:
+
+```python
+dataset = client.get_dataset(name="my-dataset")
+```
+
+<ParamField path="name" type="string" required>
+  The name of the dataset to retrieve
+</ParamField>
+
+### get_or_create_dataset()
+
+Get a dataset if it exists, otherwise create it:
+
+```python
+dataset = client.get_or_create_dataset(
+    name="my-dataset",
+    description="Created if it doesn't exist"
+)
+```
+
+<ParamField path="name" type="string" required>
+  The name of the dataset
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description used only if creating a new dataset
+</ParamField>
+
+## Evaluation Suite Methods
+
+### create_evaluation_suite()
+
+Create a new evaluation suite for regression testing:
+
+```python
+suite = client.create_evaluation_suite(
+    name="Refund Policy Tests",
+    description="Regression tests for refund scenarios",
+    assertions=[
+        "No hallucinated information",
+        "Response is helpful"
+    ],
+    execution_policy={"runs_per_item": 3, "pass_threshold": 2},
+    tags=["regression", "refunds"]
+)
+```
+
+<ParamField path="name" type="string" required>
+  The name of the evaluation suite
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of what this suite tests
+</ParamField>
+
+<ParamField path="assertions" type="list[string]">
+  Suite-level assertions checked by an LLM
+</ParamField>
+
+<ParamField path="execution_policy" type="ExecutionPolicy">
+  Suite-level execution policy with `runs_per_item` and `pass_threshold`
+</ParamField>
+
+<ParamField path="tags" type="list[string]">
+  Tags for the suite
+</ParamField>
+
+### get_evaluation_suite()
+
+Retrieve an existing evaluation suite:
+
+```python
+suite = client.get_evaluation_suite(name="Refund Policy Tests")
+```
+
+<ParamField path="name" type="string" required>
+  The name of the evaluation suite
+</ParamField>
+
+## Search Methods
+
+### search_traces()
+
+Search for traces in a project:
+
+```python
+traces = client.search_traces(
+    project_name="my-project",
+    filter_string='tags contains "production"'
+)
+```
+
+<ParamField path="project_name" type="string">
+  The project to search in. Defaults to client's project
+</ParamField>
+
+<ParamField path="filter_string" type="string">
+  OQL filter string for filtering traces
+</ParamField>
+
+### search_spans()
+
+Search for spans in a project:
+
+```python
+spans = client.search_spans(
+    project_name="my-project",
+    filter_string='type = "llm"'
+)
+```
+
+<ParamField path="project_name" type="string">
+  The project to search in
+</ParamField>
+
+<ParamField path="filter_string" type="string">
+  OQL filter string for filtering spans
+</ParamField>
+
+## Feedback Methods
+
+### log_traces_feedback_scores()
+
+Log feedback scores for traces:
+
+```python
+client.log_traces_feedback_scores(
+    scores=[
+        {
+            "id": "trace-id",
+            "name": "user_rating",
+            "value": 0.9,
+            "category_name": "accuracy",
+            "reason": "Excellent response"
+        }
+    ],
+    project_name="my-project"
+)
+```
+
+### log_spans_feedback_scores()
+
+Log feedback scores for spans:
+
+```python
+client.log_spans_feedback_scores(
+    scores=[
+        {
+            "id": "span-id",
+            "name": "relevance",
+            "value": 0.85
+        }
+    ],
+    project_name="my-project"
+)
+```
+
+## Utility Methods
+
+### flush()
+
+Flush all pending data to the server:
+
+```python
+client.flush(timeout=30)  # Wait up to 30 seconds
+```
+
+<ParamField path="timeout" type="int">
+  Maximum time to wait in seconds. If `None`, uses the default flush timeout
+</ParamField>
+
+### end()
+
+End the client session and flush all data:
+
+```python
+client.end(timeout=30)
+```
+
+This method is automatically called when the program exits.
+
+### auth_check()
+
+Verify authentication and access to the workspace:
+
+```python
+try:
+    client.auth_check()
+    print("Authentication successful")
+except Exception as e:
+    print(f"Authentication failed: {e}")
+```
+
+## Complete Example
+
+Here's a complete example using the Opik client:
+
+```python
+from opik import Opik
+import datetime
+
+# Create client
+client = Opik(project_name="llm-app")
+
+# Verify authentication
+client.auth_check()
+
+# Create a trace
+trace = client.trace(
+    name="user-query",
+    input={"question": "What is machine learning?"},
+    metadata={"user_id": "123"},
+    tags=["production"]
+)
+
+# Add a span to the trace
+span = client.span(
+    trace_id=trace.id,
+    name="llm-call",
+    type="llm",
+    input={"prompt": "Explain machine learning"},
+    output={"response": "Machine learning is..."},
+    model="gpt-4",
+    provider="openai",
+    usage={
+        "prompt_tokens": 20,
+        "completion_tokens": 100,
+        "total_tokens": 120
+    }
+)
+
+# Update the trace with output
+trace.update(
+    output={"answer": "Machine learning is..."},
+    end_time=datetime.datetime.now()
+)
+
+# Log feedback score
+client.log_traces_feedback_scores(
+    scores=[{
+        "id": trace.id,
+        "name": "user_rating",
+        "value": 0.9
+    }],
+    project_name="llm-app"
+)
+
+# Create a dataset
+dataset = client.get_or_create_dataset(
+    name="eval-dataset",
+    description="Evaluation dataset"
+)
+
+# Add items to dataset
+dataset.insert([
+    {
+        "input": {"question": "What is AI?"},
+        "expected_output": "Artificial Intelligence is..."
+    },
+    {
+        "input": {"question": "What is ML?"},
+        "expected_output": "Machine Learning is..."
+    }
+])
+
+# Flush all data
+client.flush()
+
+print(f"Logged trace: {trace.id}")
+print(f"Dataset items: {dataset.dataset_items_count}")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Tracing" icon="route" href="/sdk/python/tracing">
+    Learn about automatic tracing with decorators
+  </Card>
+  <Card title="Datasets" icon="database" href="/sdk/python/datasets">
+    Explore dataset management features
+  </Card>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/python/evaluation">
+    Run evaluations on your datasets
+  </Card>
+  <Card title="Experiments" icon="flask" href="/sdk/python/experiments">
+    Track and compare experiments
+  </Card>
+</CardGroup>

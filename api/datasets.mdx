@@ -1,0 +1,706 @@
+---
+title: "Datasets"
+description: "API endpoints for managing datasets and dataset items"
+---
+
+## Overview
+
+Datasets in Opik allow you to create versioned collections of test data for evaluating your LLM applications. Each dataset can contain multiple items and supports versioning.
+
+## Endpoints
+
+### List Datasets
+
+<CodeGroup>
+
+```bash GET /v1/private/datasets
+curl -X GET 'http://localhost:5173/api/v1/private/datasets?page=1&size=10' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve a paginated list of datasets.
+
+**Query Parameters:**
+
+<ParamField query="page" type="integer" default="1">
+  Page number (minimum: 1)
+</ParamField>
+
+<ParamField query="size" type="integer" default="10">
+  Number of items per page (minimum: 1)
+</ParamField>
+
+<ParamField query="name" type="string">
+  Filter datasets by name (partial match, case insensitive)
+</ParamField>
+
+<ParamField query="sorting" type="string">
+  Sorting criteria
+</ParamField>
+
+<ParamField query="filters" type="string">
+  Filter criteria in JSON format
+</ParamField>
+
+<ParamField query="with_experiments_only" type="boolean">
+  Only return datasets that have associated experiments
+</ParamField>
+
+<ParamField query="prompt_id" type="string" format="uuid">
+  Filter datasets by associated prompt ID
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "content": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "name": "test-dataset",
+      "description": "Dataset for testing chat completions",
+      "created_at": "2024-03-14T10:30:00Z",
+      "last_updated_at": "2024-03-14T10:30:00Z",
+      "items_count": 150
+    }
+  ],
+  "page": 1,
+  "size": 10,
+  "total": 5
+}
+```
+
+### Create Dataset
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets
+curl -X POST 'http://localhost:5173/api/v1/private/datasets' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "test-dataset",
+    "description": "Dataset for testing chat completions"
+  }'
+```
+
+</CodeGroup>
+
+Create a new dataset.
+
+**Request Body:**
+
+<ParamField body="name" type="string" required>
+  Dataset name (must be unique)
+</ParamField>
+
+<ParamField body="description" type="string">
+  Optional dataset description
+</ParamField>
+
+**Response:**
+
+<ResponseField name="201" type="Created">
+  Dataset created successfully. The `Location` header contains the dataset URL.
+</ResponseField>
+
+### Get Dataset by ID
+
+<CodeGroup>
+
+```bash GET /v1/private/datasets/{id}
+curl -X GET 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve a specific dataset by ID.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "test-dataset",
+  "description": "Dataset for testing chat completions",
+  "created_at": "2024-03-14T10:30:00Z",
+  "last_updated_at": "2024-03-14T10:30:00Z",
+  "items_count": 150
+}
+```
+
+### Get Dataset by Name
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets/retrieve
+curl -X POST 'http://localhost:5173/api/v1/private/datasets/retrieve' \
+  -H 'Content-Type: application/json' \
+  -d '{"name": "test-dataset"}'
+```
+
+</CodeGroup>
+
+Retrieve a dataset by its name.
+
+**Request Body:**
+
+<ParamField body="name" type="string" required>
+  Dataset name
+</ParamField>
+
+**Response:**
+
+Returns the same dataset object as the Get Dataset by ID endpoint.
+
+### Update Dataset
+
+<CodeGroup>
+
+```bash PUT /v1/private/datasets/{id}
+curl -X PUT 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "updated-dataset",
+    "description": "Updated description"
+  }'
+```
+
+</CodeGroup>
+
+Update a dataset by ID.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Request Body:**
+
+<ParamField body="name" type="string">
+  Updated dataset name
+</ParamField>
+
+<ParamField body="description" type="string">
+  Updated description
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Dataset updated successfully
+</ResponseField>
+
+### Delete Dataset
+
+<CodeGroup>
+
+```bash DELETE /v1/private/datasets/{id}
+curl -X DELETE 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000'
+```
+
+</CodeGroup>
+
+Delete a dataset by ID.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Dataset deleted successfully
+</ResponseField>
+
+## Dataset Items
+
+### Get Dataset Items
+
+<CodeGroup>
+
+```bash GET /v1/private/datasets/{id}/items
+curl -X GET 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000/items?page=1&size=10' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve items from a dataset.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Query Parameters:**
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+<ParamField query="size" type="integer" default="10">
+  Items per page
+</ParamField>
+
+<ParamField query="version" type="string">
+  Version hash or tag to fetch specific dataset version
+</ParamField>
+
+<ParamField query="filters" type="string">
+  Filter criteria
+</ParamField>
+
+<ParamField query="truncate" type="boolean">
+  Truncate image included in input, output or metadata
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "content": [
+    {
+      "id": "660e8400-e29b-41d4-a716-446655440000",
+      "input": {
+        "messages": [{"role": "user", "content": "What is AI?"}]
+      },
+      "expected_output": {
+        "response": "AI stands for Artificial Intelligence..."
+      },
+      "metadata": {
+        "category": "definitions"
+      },
+      "created_at": "2024-03-14T10:30:00Z"
+    }
+  ],
+  "page": 1,
+  "size": 10,
+  "total": 150
+}
+```
+
+### Create/Update Dataset Items
+
+<CodeGroup>
+
+```bash PUT /v1/private/datasets/items
+curl -X PUT 'http://localhost:5173/api/v1/private/datasets/items' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "dataset_id": "550e8400-e29b-41d4-a716-446655440000",
+    "items": [
+      {
+        "id": "660e8400-e29b-41d4-a716-446655440000",
+        "input": {"messages": [{"role": "user", "content": "Hello"}]},
+        "expected_output": {"response": "Hi there!"}
+      }
+    ]
+  }'
+```
+
+</CodeGroup>
+
+Create or update dataset items based on item ID.
+
+**Request Body:**
+
+<ParamField body="dataset_id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+<ParamField body="items" type="array" required>
+  Array of dataset items
+  
+  <Expandable title="Dataset Item">
+    <ParamField body="id" type="string" format="uuid">
+      Item ID (auto-generated if not provided)
+    </ParamField>
+    
+    <ParamField body="input" type="object" required>
+      Input data for the item
+    </ParamField>
+    
+    <ParamField body="expected_output" type="object">
+      Expected output for evaluation
+    </ParamField>
+    
+    <ParamField body="metadata" type="object">
+      Additional metadata
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Dataset items created/updated successfully
+</ResponseField>
+
+### Create Dataset Items from CSV
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets/items/from-csv
+curl -X POST 'http://localhost:5173/api/v1/private/datasets/items/from-csv' \
+  -F 'file=@dataset.csv' \
+  -F 'dataset_id=550e8400-e29b-41d4-a716-446655440000'
+```
+
+</CodeGroup>
+
+Create dataset items from an uploaded CSV file. Processing happens asynchronously in batches.
+
+**Request (multipart/form-data):**
+
+<ParamField body="file" type="file" required>
+  CSV file with headers in the first row
+</ParamField>
+
+<ParamField body="dataset_id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Response:**
+
+<ResponseField name="202" type="Accepted">
+  CSV processing started
+</ResponseField>
+
+<ResponseField name="404" type="Not Found">
+  CSV upload feature is disabled
+</ResponseField>
+
+### Delete Dataset Items
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets/items/delete
+curl -X POST 'http://localhost:5173/api/v1/private/datasets/items/delete' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "item_ids": [
+      "660e8400-e29b-41d4-a716-446655440000",
+      "770e8400-e29b-41d4-a716-446655440001"
+    ]
+  }'
+```
+
+</CodeGroup>
+
+Delete dataset items using one of two modes:
+
+1. **Delete by IDs**: Provide `item_ids` to delete specific items
+2. **Delete by filters**: Provide `dataset_id` with optional `filters` to delete items matching criteria
+
+**Request Body (Mode 1 - By IDs):**
+
+<ParamField body="item_ids" type="array">
+  Array of item IDs to delete
+</ParamField>
+
+**Request Body (Mode 2 - By Filters):**
+
+<ParamField body="dataset_id" type="string" format="uuid">
+  Dataset ID
+</ParamField>
+
+<ParamField body="filters" type="string">
+  Filter criteria (empty array deletes all items)
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Items deleted successfully
+</ResponseField>
+
+## Dataset Versions
+
+### List Dataset Versions
+
+<CodeGroup>
+
+```bash GET /v1/private/datasets/{id}/versions
+curl -X GET 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000/versions?page=1&size=10' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Get paginated list of versions for a dataset, ordered by creation time (newest first).
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Query Parameters:**
+
+<ParamField query="page" type="integer" default="1">
+  Page number
+</ParamField>
+
+<ParamField query="size" type="integer" default="10">
+  Items per page
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "content": [
+    {
+      "version_hash": "v1a2b3c4d5e6f",
+      "version_name": "v1",
+      "created_at": "2024-03-14T10:30:00Z",
+      "items_count": 150,
+      "tags": ["production"],
+      "change_description": "Added 50 new examples"
+    }
+  ],
+  "page": 1,
+  "size": 10,
+  "total": 3
+}
+```
+
+### Create Version Tag
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets/{id}/versions/hash/{versionHash}/tags
+curl -X POST 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000/versions/hash/v1a2b3c4d5e6f/tags' \
+  -H 'Content-Type: application/json' \
+  -d '{"tag": "baseline"}'
+```
+
+</CodeGroup>
+
+Add a tag to a specific dataset version for easy reference (e.g., 'baseline', 'v1.0', 'production').
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+<ParamField path="versionHash" type="string" required>
+  Version hash
+</ParamField>
+
+**Request Body:**
+
+<ParamField body="tag" type="string" required>
+  Tag name
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Tag created successfully
+</ResponseField>
+
+<ResponseField name="409" type="Conflict">
+  Tag already exists
+</ResponseField>
+
+### Delete Version Tag
+
+<CodeGroup>
+
+```bash DELETE /v1/private/datasets/{id}/versions/{versionHash}/tags/{tag}
+curl -X DELETE 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000/versions/v1a2b3c4d5e6f/tags/baseline'
+```
+
+</CodeGroup>
+
+Remove a tag from a dataset version. The version itself is not deleted, only the tag reference.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+<ParamField path="versionHash" type="string" required>
+  Version hash
+</ParamField>
+
+<ParamField path="tag" type="string" required>
+  Tag name to delete
+</ParamField>
+
+**Response:**
+
+<ResponseField name="204" type="No Content">
+  Tag deleted successfully
+</ResponseField>
+
+### Restore Dataset Version
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets/{id}/versions/restore
+curl -X POST 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000/versions/restore' \
+  -H 'Content-Type: application/json' \
+  -d '{"version_hash": "v1a2b3c4d5e6f"}'
+```
+
+</CodeGroup>
+
+Restores the dataset to a previous version state by creating a new version with items copied from the specified version.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Request Body:**
+
+<ParamField body="version_hash" type="string" required>
+  Version hash to restore
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "version_hash": "v7a8b9c0d1e2f",
+  "version_name": "v4",
+  "created_at": "2024-03-14T11:00:00Z",
+  "items_count": 150,
+  "change_description": "Restored from v1"
+}
+```
+
+## Export Dataset
+
+### Start Dataset Export
+
+<CodeGroup>
+
+```bash POST /v1/private/datasets/{id}/export
+curl -X POST 'http://localhost:5173/api/v1/private/datasets/550e8400-e29b-41d4-a716-446655440000/export' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Initiates an asynchronous CSV export job for the dataset. Returns immediately with job details for polling.
+
+**Path Parameters:**
+
+<ParamField path="id" type="string" format="uuid" required>
+  Dataset ID
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "job_id": "880e8400-e29b-41d4-a716-446655440000",
+  "status": "pending",
+  "created_at": "2024-03-14T10:30:00Z"
+}
+```
+
+<ResponseField name="202" type="Accepted">
+  Export job created
+</ResponseField>
+
+<ResponseField name="200" type="OK">
+  Existing export job in progress
+</ResponseField>
+
+### Get Export Job Status
+
+<CodeGroup>
+
+```bash GET /v1/private/datasets/export-jobs/{jobId}
+curl -X GET 'http://localhost:5173/api/v1/private/datasets/export-jobs/880e8400-e29b-41d4-a716-446655440000' \
+  -H 'Accept: application/json'
+```
+
+</CodeGroup>
+
+Retrieve the current status of a dataset export job.
+
+**Path Parameters:**
+
+<ParamField path="jobId" type="string" format="uuid" required>
+  Export job ID
+</ParamField>
+
+**Response:**
+
+```json
+{
+  "job_id": "880e8400-e29b-41d4-a716-446655440000",
+  "status": "completed",
+  "created_at": "2024-03-14T10:30:00Z",
+  "completed_at": "2024-03-14T10:31:00Z",
+  "download_url": "/v1/private/datasets/export-jobs/880e8400-e29b-41d4-a716-446655440000/download"
+}
+```
+
+### Download Export File
+
+<CodeGroup>
+
+```bash GET /v1/private/datasets/export-jobs/{jobId}/download
+curl -X GET 'http://localhost:5173/api/v1/private/datasets/export-jobs/880e8400-e29b-41d4-a716-446655440000/download' \
+  -o dataset.csv
+```
+
+</CodeGroup>
+
+Download the exported CSV file for a completed export job.
+
+**Path Parameters:**
+
+<ParamField path="jobId" type="string" format="uuid" required>
+  Export job ID
+</ParamField>
+
+**Response:**
+
+<ResponseField name="200" type="OK">
+  Returns CSV file content (text/csv)
+</ResponseField>
+
+<ResponseField name="400" type="Bad Request">
+  Export job is not ready for download
+</ResponseField>
+
+## Best Practices
+
+<Tip>
+  Use dataset versions to track changes and maintain reproducibility of your experiments.
+</Tip>
+
+<Warning>
+  Large datasets should be uploaded using the CSV import endpoint for better performance.
+</Warning>
+
+### Recommendations
+
+1. **Version your datasets** - Create versions when making significant changes
+2. **Tag important versions** - Use tags like 'baseline', 'production' for easy reference
+3. **Use CSV import** - For datasets with 100+ items, use the CSV import endpoint
+4. **Paginate large datasets** - Use pagination when retrieving items from large datasets
+5. **Export for backup** - Regularly export datasets as CSV for backup purposes

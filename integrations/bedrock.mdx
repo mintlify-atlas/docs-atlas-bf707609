@@ -1,0 +1,599 @@
+---
+title: AWS Bedrock Integration
+description: Track and monitor AWS Bedrock model invocations with Opik
+---
+
+Opik provides native integration with AWS Bedrock, allowing you to automatically trace and monitor all your Bedrock model invocations across multiple model providers including Claude, Nova, Llama, and Mistral.
+
+## Installation
+
+First, ensure you have both Opik and boto3 installed:
+
+```bash
+pip install opik boto3
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure Opik">
+    Initialize Opik in your application:
+
+    ```python
+    import opik
+
+    opik.configure()
+    ```
+  </Step>
+
+  <Step title="Track your Bedrock client">
+    Wrap your Bedrock client with Opik tracking:
+
+    ```python
+    import boto3
+    from opik.integrations.bedrock import track_bedrock
+
+    client = boto3.client("bedrock-runtime", region_name="us-east-1")
+    client = track_bedrock(client)
+    ```
+  </Step>
+
+  <Step title="Use Bedrock as normal">
+    All your Bedrock API calls will now be automatically tracked:
+
+    ```python
+    response = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[
+            {"role": "user", "content": [{"text": "Hello, how are you?"}]}
+        ]
+    )
+    ```
+  </Step>
+</Steps>
+
+## Supported Features
+
+The Opik Bedrock integration tracks calls to:
+
+- `client.converse()` - Unified Converse API (recommended)
+- `client.converse_stream()` - Streaming with Converse API
+- `client.invoke_model()` - Legacy InvokeModel API
+- `client.invoke_model_with_response_stream()` - Streaming with InvokeModel
+- `client.invoke_agent()` - Agent invocations
+
+### Supported Model Providers
+
+The integration supports the following model providers:
+
+<CardGroup cols={2}>
+  <Card title="Anthropic Claude" icon="message">
+    Claude models via InvokeModel API
+  </Card>
+  
+  <Card title="Amazon Nova" icon="aws">
+    Amazon's Nova models
+  </Card>
+  
+  <Card title="Meta Llama" icon="meta">
+    Llama models from Meta
+  </Card>
+  
+  <Card title="Mistral AI" icon="sparkles">
+    Mistral and Pixtral models
+  </Card>
+</CardGroup>
+
+<Note>
+The Converse API works with all Bedrock models and is the recommended approach. The InvokeModel API requires model-specific formatting.
+</Note>
+
+## Usage Examples
+
+### Using Converse API (Recommended)
+
+The Converse API provides a unified interface across all Bedrock models:
+
+```python
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def chat_with_claude(user_message: str):
+    response = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[
+            {"role": "user", "content": [{"text": user_message}]}
+        ],
+        system=[
+            {"text": "You are a helpful AI assistant."}
+        ],
+        inferenceConfig={
+            "maxTokens": 100,
+            "temperature": 0.7,
+        }
+    )
+    
+    return response["output"]["message"]["content"][0]["text"]
+
+result = chat_with_claude("What is machine learning?")
+print(result)
+flush_tracker()
+```
+
+### Streaming with Converse API
+
+The integration automatically handles streaming responses:
+
+```python
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def stream_response(prompt: str):
+    response = client.converse_stream(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[
+            {"role": "user", "content": [{"text": prompt}]}
+        ],
+        inferenceConfig={"maxTokens": 200}
+    )
+    
+    full_response = ""
+    for event in response["stream"]:
+        if "contentBlockDelta" in event:
+            delta = event["contentBlockDelta"]["delta"]
+            if "text" in delta:
+                text = delta["text"]
+                print(text, end="", flush=True)
+                full_response += text
+    print()
+    
+    return full_response
+
+result = stream_response("Write a haiku about coding")
+flush_tracker()
+```
+
+### Using InvokeModel API
+
+For model-specific features, use the InvokeModel API:
+
+```python
+import json
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def invoke_claude(prompt: str):
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 100,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    })
+    
+    response = client.invoke_model(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        body=body
+    )
+    
+    result = json.loads(response["body"].read())
+    return result["content"][0]["text"]
+
+result = invoke_claude("Hello!")
+print(result)
+flush_tracker()
+```
+
+### Streaming with InvokeModel
+
+```python
+import json
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def stream_invoke_model(prompt: str):
+    body = json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "max_tokens": 200,
+        "messages": [{"role": "user", "content": prompt}]
+    })
+    
+    response = client.invoke_model_with_response_stream(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        body=body
+    )
+    
+    full_response = ""
+    for event in response["body"]:
+        chunk = json.loads(event["chunk"]["bytes"])
+        if chunk["type"] == "content_block_delta":
+            text = chunk["delta"].get("text", "")
+            print(text, end="", flush=True)
+            full_response += text
+    print()
+    
+    return full_response
+
+result = stream_invoke_model("Tell me about AWS")
+flush_tracker()
+```
+
+### Using Different Model Providers
+
+<Tabs>
+  <Tab title="Claude (Anthropic)">
+    ```python
+    response = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[{
+            "role": "user",
+            "content": [{"text": "Hello!"}]
+        }]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Nova (Amazon)">
+    ```python
+    response = client.converse(
+        modelId="amazon.nova-pro-v1:0",
+        messages=[{
+            "role": "user",
+            "content": [{"text": "Hello!"}]
+        }]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Llama (Meta)">
+    ```python
+    response = client.converse(
+        modelId="meta.llama3-70b-instruct-v1:0",
+        messages=[{
+            "role": "user",
+            "content": [{"text": "Hello!"}]
+        }]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Mistral AI">
+    ```python
+    response = client.converse(
+        modelId="mistral.mistral-large-2407-v1:0",
+        messages=[{
+            "role": "user",
+            "content": [{"text": "Hello!"}]
+        }]
+    )
+    ```
+  </Tab>
+</Tabs>
+
+### Agent Invocations
+
+```python
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-agent-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def invoke_agent(user_input: str, agent_id: str, agent_alias_id: str):
+    response = client.invoke_agent(
+        agentId=agent_id,
+        agentAliasId=agent_alias_id,
+        sessionId="my-session",
+        inputText=user_input
+    )
+    
+    completion = ""
+    for event in response["completion"]:
+        if "chunk" in event:
+            chunk = event["chunk"]
+            completion += chunk["bytes"].decode()
+    
+    return completion
+
+result = invoke_agent("Help me book a flight", "AGENT123", "ALIAS456")
+flush_tracker()
+```
+
+## Configuration Options
+
+### Project Name
+
+Specify a custom project name for organizing your traces:
+
+```python
+client = track_bedrock(client, project_name="bedrock-experiments")
+```
+
+### Multi-Region Support
+
+Track clients across different AWS regions:
+
+```python
+import boto3
+from opik.integrations.bedrock import track_bedrock
+
+# US East client
+us_client = boto3.client("bedrock-runtime", region_name="us-east-1")
+us_client = track_bedrock(us_client, project_name="us-bedrock")
+
+# EU client
+eu_client = boto3.client("bedrock-runtime", region_name="eu-west-1")
+eu_client = track_bedrock(eu_client, project_name="eu-bedrock")
+```
+
+## What Gets Tracked
+
+For each Bedrock API call, Opik captures:
+
+<CardGroup cols={2}>
+  <Card title="Input" icon="arrow-right-to-bracket">
+    - User messages
+    - System prompts
+    - Inference configuration
+    - Model parameters
+  </Card>
+
+  <Card title="Output" icon="arrow-left-from-bracket">
+    - Model responses
+    - Generated text
+    - Stop reason
+    - Response metadata
+  </Card>
+
+  <Card title="Metadata" icon="tags">
+    - Model ID
+    - Region
+    - API method (converse/invoke_model)
+    - Request configuration
+  </Card>
+
+  <Card title="Usage" icon="chart-line">
+    - Input tokens
+    - Output tokens
+    - Total tokens
+    - Provider-specific metrics
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Nested Tracking
+
+Combine Bedrock calls with custom tracked functions:
+
+```python
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def generate_outline(topic: str):
+    response = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[{
+            "role": "user",
+            "content": [{"text": f"Create an outline for: {topic}"}]
+        }]
+    )
+    return response["output"]["message"]["content"][0]["text"]
+
+@track()
+def expand_section(section: str):
+    response = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[{
+            "role": "user",
+            "content": [{"text": f"Expand this section: {section}"}]
+        }]
+    )
+    return response["output"]["message"]["content"][0]["text"]
+
+@track()
+def create_document(topic: str):
+    outline = generate_outline(topic)
+    sections = [expand_section(s) for s in outline.split("\n")[:3]]
+    return "\n\n".join(sections)
+
+result = create_document("Cloud Computing")
+flush_tracker()
+```
+
+### Multi-turn Conversations
+
+```python
+import boto3
+from opik import track, flush_tracker
+from opik.integrations.bedrock import track_bedrock
+
+client = boto3.client("bedrock-runtime", region_name="us-east-1")
+client = track_bedrock(client)
+
+@track()
+def multi_turn_chat():
+    messages = []
+    
+    # First turn
+    messages.append({
+        "role": "user",
+        "content": [{"text": "What is AWS?"}]
+    })
+    
+    response1 = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=messages
+    )
+    
+    # Add assistant response
+    messages.append(response1["output"]["message"])
+    
+    # Second turn
+    messages.append({
+        "role": "user",
+        "content": [{"text": "Tell me more about EC2"}]
+    })
+    
+    response2 = client.converse(
+        modelId="anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=messages
+    )
+    
+    return response2["output"]["message"]["content"][0]["text"]
+
+result = multi_turn_chat()
+flush_tracker()
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use Converse API when possible">
+    The Converse API provides a unified interface and is easier to work with:
+
+    ```python
+    # Recommended
+    response = client.converse(modelId=model, messages=messages)
+    
+    # Instead of
+    response = client.invoke_model(modelId=model, body=json.dumps(...))
+    ```
+  </Step>
+
+  <Step title="Always flush at the end">
+    Call `opik.flush_tracker()` to ensure all traces are sent:
+
+    ```python
+    from opik import flush_tracker
+
+    # Your code here...
+    
+    flush_tracker()
+    ```
+  </Step>
+
+  <Step title="Consume entire streams">
+    Always iterate through complete streaming responses:
+
+    ```python
+    for event in response["stream"]:
+        process(event)
+    ```
+  </Step>
+
+  <Step title="Use meaningful project names">
+    Organize traces by use case or environment:
+
+    ```python
+    client = track_bedrock(client, project_name="production-chatbot")
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Traces not appearing
+
+Make sure to:
+1. Call `opik.configure()` before creating the client
+2. Call `opik.flush_tracker()` at the end of your script
+3. Verify AWS credentials are configured correctly
+4. Check that your AWS region supports Bedrock
+
+### Streaming not tracked properly
+
+Ensure you consume the entire stream:
+
+```python
+# Good - stream is fully consumed
+for event in response["stream"]:
+    process(event)
+
+# Bad - stream may not be fully consumed
+first_event = next(response["stream"])
+```
+
+### Model not supported
+
+If you're using a new model not yet supported:
+1. Use the Converse API (supports all models)
+2. For InvokeModel, check the integration's model format detector
+3. Report the issue to add support for the new model
+
+### Double tracking
+
+The integration is idempotent - calling `track_bedrock()` multiple times on the same client is safe and won't create duplicate traces.
+
+## Reference
+
+### `track_bedrock()`
+
+```python
+def track_bedrock(
+    client: BedrockRuntimeClient,
+    project_name: Optional[str] = None,
+) -> BedrockRuntimeClient:
+    """
+    Adds Opik tracking to an AWS Bedrock client.
+    
+    Supports:
+    - converse() and converse_stream()
+    - invoke_model() and invoke_model_with_response_stream()
+    - invoke_agent() for agent invocations
+    
+    Args:
+        client: An instance of boto3 BedrockRuntime or AgentsforBedrockRuntime client
+        project_name: Optional project name for organizing traces
+    
+    Returns:
+        The modified client with Opik tracking enabled
+    """
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" href="/evaluation/overview" icon="chart-bar">
+    Learn how to evaluate your Bedrock model outputs
+  </Card>
+
+  <Card title="Prompts" href="/advanced/prompt-management" icon="message">
+    Manage and version your prompts
+  </Card>
+
+  <Card title="Datasets" href="/evaluation/datasets" icon="database">
+    Create datasets for testing
+  </Card>
+
+  <Card title="Other Integrations" href="/integrations" icon="plug">
+    Explore more LLM integrations
+  </Card>
+</CardGroup>

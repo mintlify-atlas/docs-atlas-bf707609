@@ -1,0 +1,531 @@
+---
+title: Google Gemini Integration
+description: Track and monitor Google Gemini API calls with Opik
+---
+
+Opik provides native integration with Google's Gemini API (via the `google-genai` SDK), allowing you to automatically trace and monitor all your Gemini API calls including text generation, multi-modal inputs, streaming responses, and video generation.
+
+## Installation
+
+First, ensure you have both Opik and Google GenAI installed:
+
+```bash
+pip install opik google-genai
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure Opik">
+    Initialize Opik in your application:
+
+    ```python
+    import opik
+
+    opik.configure()
+    ```
+  </Step>
+
+  <Step title="Track your Gemini client">
+    Wrap your GenAI client with Opik tracking:
+
+    ```python
+    import google.genai as genai
+    from opik.integrations.genai import track_genai
+
+    client = genai.Client(api_key="your-api-key")
+    client = track_genai(client)
+    ```
+  </Step>
+
+  <Step title="Use Gemini as normal">
+    All your Gemini API calls will now be automatically tracked:
+
+    ```python
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents="Tell me a fact about quantum computing"
+    )
+    ```
+  </Step>
+</Steps>
+
+## Supported Features
+
+The Opik Gemini integration tracks calls to:
+
+- `client.models.generate_content()` - Text and multi-modal generation
+- `client.models.generate_content_stream()` - Streaming responses
+- `client.aio.models.generate_content()` - Async text generation
+- `client.aio.models.generate_content_stream()` - Async streaming
+- `client.models.generate_videos()` - Video generation (Veo)
+- `client.aio.models.generate_videos()` - Async video generation
+- `client.operations.get()` - Operation polling for video generation
+
+## Usage Examples
+
+### Basic Text Generation
+
+```python
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+def ask_gemini(question: str):
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=question
+    )
+    return response.text
+
+answer = ask_gemini("What is the speed of light?")
+print(answer)
+flush_tracker()
+```
+
+### Streaming Responses
+
+The integration automatically handles streaming responses:
+
+```python
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+def stream_response(prompt: str):
+    stream = client.models.generate_content_stream(
+        model="gemini-2.0-flash",
+        contents=prompt
+    )
+    
+    full_response = ""
+    for chunk in stream:
+        if chunk.text:
+            print(chunk.text, end="")
+            full_response += chunk.text
+    print()
+    
+    return full_response
+
+result = stream_response("Write a short poem about AI")
+flush_tracker()
+```
+
+<Note>
+When streaming, the span is automatically updated once the stream is fully consumed. Make sure to iterate through all chunks for complete tracking.
+</Note>
+
+### Async Support
+
+The integration works seamlessly with async Gemini operations:
+
+```python
+import asyncio
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+async def async_chat(message: str):
+    response = await client.aio.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=message
+    )
+    return response.text
+
+async def main():
+    result = await async_chat("Hello Gemini!")
+    print(result)
+    flush_tracker()
+
+asyncio.run(main())
+```
+
+### Multi-Modal Inputs
+
+Gemini supports multi-modal inputs including images:
+
+```python
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+def analyze_image(image_path: str, question: str):
+    with open(image_path, "rb") as f:
+        image_data = f.read()
+    
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=[
+            {"text": question},
+            {"inline_data": {"mime_type": "image/jpeg", "data": image_data}}
+        ]
+    )
+    return response.text
+
+result = analyze_image("photo.jpg", "What's in this image?")
+print(result)
+flush_tracker()
+```
+
+### Structured Outputs
+
+```python
+import google.genai as genai
+from google.genai import types
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+def extract_structured_data(text: str):
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=text,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+            response_schema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "age": {"type": "integer"},
+                    "occupation": {"type": "string"}
+                }
+            }
+        )
+    )
+    return response.text
+
+result = extract_structured_data("John is a 30-year-old software engineer.")
+print(result)
+flush_tracker()
+```
+
+## Configuration Options
+
+### Project Name
+
+Specify a custom project name for organizing your traces:
+
+```python
+client = track_genai(client, project_name="gemini-experiments")
+```
+
+### Video Upload Control
+
+Control whether generated videos are uploaded as attachments:
+
+```python
+# Disable video uploads to save storage
+client = track_genai(client, upload_videos=False)
+```
+
+### Custom Cost Tracking
+
+For models with complex pricing (e.g., different rates for thinking tokens):
+
+```python
+def calculate_cost(response):
+    # Custom cost calculation logic
+    return 0.001 * response.usage_metadata.total_token_count
+
+client = track_genai(client, cost_callback=calculate_cost)
+```
+
+### Vertex AI Configuration
+
+When using Gemini on Google Vertex AI:
+
+```python
+import google.genai as genai
+from opik.integrations.genai import track_genai
+
+client = genai.Client(
+    vertexai=True,
+    project="my-gcp-project",
+    location="us-central1"
+)
+client = track_genai(client)
+
+# Provider will be automatically detected as "google_vertexai"
+response = client.models.generate_content(
+    model="gemini-2.0-flash",
+    contents="Hello"
+)
+```
+
+## What Gets Tracked
+
+For each Gemini API call, Opik captures:
+
+<CardGroup cols={2}>
+  <Card title="Input" icon="arrow-right-to-bracket">
+    - Text prompts
+    - Multi-modal content (images, audio)
+    - System instructions
+    - All request parameters
+  </Card>
+
+  <Card title="Output" icon="arrow-left-from-bracket">
+    - Generated text
+    - Multi-modal responses
+    - Structured outputs
+    - Safety ratings
+  </Card>
+
+  <Card title="Metadata" icon="tags">
+    - Model name
+    - Provider (Google AI or Vertex AI)
+    - Temperature and other settings
+    - Response metadata
+  </Card>
+
+  <Card title="Usage" icon="chart-line">
+    - Prompt tokens
+    - Completion tokens
+    - Total tokens
+    - Cached tokens (if applicable)
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Nested Tracking
+
+Combine Gemini calls with custom tracked functions:
+
+```python
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+def generate_title(content: str):
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=f"Generate a catchy title for: {content}"
+    )
+    return response.text
+
+@track()
+def generate_summary(content: str):
+    response = client.models.generate_content(
+        model="gemini-2.0-flash",
+        contents=f"Summarize this text: {content}"
+    )
+    return response.text
+
+@track()
+def process_article(article: str):
+    title = generate_title(article)
+    summary = generate_summary(article)
+    return {"title": title, "summary": summary}
+
+result = process_article("Long article text...")
+flush_tracker()
+```
+
+### Video Generation (Veo)
+
+```python
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client, upload_videos=True)
+
+@track()
+def generate_video(prompt: str):
+    # Generate video
+    operation = client.models.generate_videos(
+        model="veo-2.0",
+        prompt=prompt
+    )
+    
+    # Poll for completion
+    video = client.operations.get(operation=operation.name)
+    
+    # Save video (automatically uploaded to Opik)
+    if video.result:
+        video.result.save("output.mp4")
+    
+    return video
+
+video = generate_video("A cat playing piano")
+flush_tracker()
+```
+
+### Async Streaming
+
+```python
+import asyncio
+import google.genai as genai
+from opik import track, flush_tracker
+from opik.integrations.genai import track_genai
+
+client = genai.Client(api_key="your-api-key")
+client = track_genai(client)
+
+@track()
+async def async_stream(prompt: str):
+    stream = await client.aio.models.generate_content_stream(
+        model="gemini-2.0-flash",
+        contents=prompt
+    )
+    
+    full_response = ""
+    async for chunk in stream:
+        if chunk.text:
+            print(chunk.text, end="")
+            full_response += chunk.text
+    print()
+    
+    return full_response
+
+async def main():
+    result = await async_stream("Tell me about quantum computing")
+    flush_tracker()
+
+asyncio.run(main())
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Always flush at the end">
+    Call `opik.flush_tracker()` to ensure all traces are sent:
+
+    ```python
+    from opik import flush_tracker
+
+    # Your code here...
+    
+    flush_tracker()
+    ```
+  </Step>
+
+  <Step title="Use meaningful project names">
+    Organize traces by using descriptive project names:
+
+    ```python
+    client = track_genai(client, project_name="content-generation")
+    ```
+  </Step>
+
+  <Step title="Consume entire streams">
+    Always iterate through complete streaming responses:
+
+    ```python
+    for chunk in stream:
+        process(chunk)
+    ```
+  </Step>
+
+  <Step title="Handle multi-modal content properly">
+    When working with images or other media, ensure proper encoding:
+
+    ```python
+    with open(image_path, "rb") as f:
+        image_data = f.read()
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Traces not appearing
+
+Make sure to:
+1. Call `opik.configure()` before creating the client
+2. Call `opik.flush_tracker()` at the end of your script
+3. Verify your API key is set correctly
+
+### Streaming not tracked properly
+
+Ensure you consume the entire stream:
+
+```python
+# Good - stream is fully consumed
+for chunk in stream:
+    process(chunk)
+
+# Bad - stream may not be fully consumed
+first_chunk = next(stream)
+```
+
+### Video uploads failing
+
+If video uploads are not working:
+1. Ensure `upload_videos=True` when calling `track_genai()`
+2. Check that the video file is saved using `video.save()`
+3. Verify your Opik storage configuration
+
+### Double tracking
+
+The integration is idempotent - calling `track_genai()` multiple times on the same client is safe and won't create duplicate traces.
+
+## Reference
+
+### `track_genai()`
+
+```python
+def track_genai(
+    client: genai.Client,
+    project_name: Optional[str] = None,
+    upload_videos: bool = True,
+    cost_callback: Optional[Callable] = None,
+) -> genai.Client:
+    """
+    Adds Opik tracking to a GenAI client.
+    
+    Args:
+        client: An instance of genai.Client
+        project_name: Optional project name for organizing traces
+        upload_videos: Whether to upload generated videos as attachments
+        cost_callback: Optional callback for custom cost calculation
+    
+    Returns:
+        The modified client with Opik tracking enabled
+    """
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation" href="/evaluation/overview" icon="chart-bar">
+    Learn how to evaluate your Gemini model outputs
+  </Card>
+
+  <Card title="Prompts" href="/advanced/prompt-management" icon="message">
+    Manage and version your prompts
+  </Card>
+
+  <Card title="Datasets" href="/evaluation/datasets" icon="database">
+    Create datasets for testing
+  </Card>
+
+  <Card title="Other Integrations" href="/integrations" icon="plug">
+    Explore more LLM integrations
+  </Card>
+</CardGroup>

@@ -1,0 +1,474 @@
+---
+title: "Pytest Integration"
+description: "Run LLM evaluations as part of your pytest test suite"
+---
+
+Opik integrates with pytest to let you run LLM evaluations as part of your standard testing workflow. This allows you to track test results, validate LLM behavior, and ensure regression-free deployments.
+
+## Installation
+
+The pytest plugin is included with the Opik SDK:
+
+```bash
+pip install opik
+```
+
+## Enable Pytest Integration
+
+Configure Opik to track pytest experiments:
+
+```bash
+# Enable pytest experiment tracking
+export OPIK_PYTEST_EXPERIMENT_ENABLED=true
+
+# Or configure interactively
+opik configure
+```
+
+You can also enable it programmatically:
+
+```python
+import opik
+import opik.config as config
+
+# Get config and enable pytest experiments
+cfg = config.get_from_user_inputs()
+cfg.pytest_experiment_enabled = True
+```
+
+## The @llm_unit Decorator
+
+The `@llm_unit` decorator marks tests as LLM unit tests. When pytest runs these tests, Opik creates an experiment and logs results.
+
+### Basic Usage
+
+```python
+import pytest
+from opik.plugins.pytest import llm_unit
+import opik
+
+@llm_unit()
+def test_greeting_generation(input, expected_output):
+    """Test that the model generates appropriate greetings."""
+    # Your LLM logic
+    result = my_llm_function(input)
+    
+    # Standard pytest assertion
+    assert result == expected_output
+
+# Parametrize the test
+@pytest.mark.parametrize(
+    "input,expected_output",
+    [
+        ({"name": "Alice"}, {"greeting": "Hello, Alice!"}),
+        ({"name": "Bob"}, {"greeting": "Hello, Bob!"}),
+    ]
+)
+def test_parametrized_greeting(input, expected_output):
+    pass  # pytest will run this with each parameter set
+```
+
+### Decorator Parameters
+
+Customize which test arguments map to Opik fields:
+
+```python
+from opik.plugins.pytest import llm_unit
+
+@llm_unit(
+    input_key="query",              # Test arg to use as input
+    expected_output_key="answer",   # Test arg to use as expected output
+    metadata_key="meta"             # Test arg to use as metadata
+)
+def test_custom_keys(query, answer, meta):
+    result = my_llm(query)
+    assert result == answer
+```
+
+Default parameter names:
+- `input_key`: `"input"` 
+- `expected_output_key`: `"expected_output"`
+- `metadata_key`: `"metadata"`
+
+## How It Works
+
+<Steps>
+  <Step title="Decorate Tests">
+    Mark tests with `@llm_unit()` to enable tracking.
+  </Step>
+  
+  <Step title="Run Pytest">
+    Execute your test suite normally with `pytest`.
+  </Step>
+  
+  <Step title="Automatic Tracking">
+    Opik creates traces for each test run and logs:
+    - Test name and parameters
+    - Test input
+    - Expected output
+    - Test result (pass/fail)
+    - Execution metadata
+  </Step>
+  
+  <Step title="Experiment Creation">
+    All `@llm_unit` tests in a pytest session are grouped into a single experiment.
+  </Step>
+</Steps>
+
+## Test Structure
+
+### With Parametrize
+
+Use pytest's parametrization for data-driven tests:
+
+```python
+import pytest
+from opik.plugins.pytest import llm_unit
+
+test_cases = [
+    (
+        {"question": "What is 2+2?"},
+        {"answer": "4"},
+        {"category": "math"}
+    ),
+    (
+        {"question": "What is the capital of France?"},
+        {"answer": "Paris"},
+        {"category": "geography"}
+    ),
+]
+
+@pytest.mark.parametrize(
+    "input,expected_output,metadata",
+    test_cases
+)
+@llm_unit()
+def test_qa_model(input, expected_output, metadata):
+    """Test question answering across different domains."""
+    result = qa_model(input["question"])
+    assert result == expected_output["answer"]
+```
+
+### With Fixtures
+
+Combine with pytest fixtures:
+
+```python
+import pytest
+from opik.plugins.pytest import llm_unit
+
+@pytest.fixture
+def llm_client():
+    """Fixture providing LLM client."""
+    from openai import OpenAI
+    return OpenAI()
+
+@pytest.mark.parametrize(
+    "input,expected_output",
+    [
+        ({"prompt": "Say hello"}, {"response": "Hello!"}),
+        ({"prompt": "Say goodbye"}, {"response": "Goodbye!"}),
+    ]
+)
+@llm_unit()
+def test_with_fixture(llm_client, input, expected_output):
+    """Test using a fixture."""
+    response = llm_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": input["prompt"]}]
+    )
+    result = response.choices[0].message.content
+    assert result == expected_output["response"]
+```
+
+## Tracking Test Execution
+
+The `@llm_unit` decorator automatically wraps tests with `@opik.track()`:
+
+```python
+import opik
+from opik.plugins.pytest import llm_unit
+
+@llm_unit()
+def test_tracked_execution(input, expected_output):
+    """This test execution is automatically tracked."""
+    # You can use opik.track() on internal functions too
+    @opik.track()
+    def internal_llm_call(query):
+        # Your LLM logic
+        return result
+    
+    result = internal_llm_call(input["question"])
+    assert result == expected_output
+```
+
+## Example: Complete Test Suite
+
+```python
+import pytest
+import opik
+from opik.plugins.pytest import llm_unit
+from opik.integrations.openai import track_openai
+import openai
+
+# Initialize tracked OpenAI client
+openai_client = track_openai(openai.OpenAI())
+
+# Test data
+qa_test_cases = [
+    (
+        {"question": "What is the capital of France?"},
+        {"answer": "Paris"},
+        {"category": "geography", "difficulty": "easy"}
+    ),
+    (
+        {"question": "What is the boiling point of water?"},
+        {"answer": "100°C"},
+        {"category": "science", "difficulty": "easy"}
+    ),
+    (
+        {"question": "Who wrote Romeo and Juliet?"},
+        {"answer": "William Shakespeare"},
+        {"category": "literature", "difficulty": "medium"}
+    ),
+]
+
+@pytest.fixture
+def qa_system():
+    """Fixture for QA system."""
+    @opik.track()
+    def answer_question(question: str) -> str:
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant. Provide concise answers."},
+                {"role": "user", "content": question}
+            ],
+            temperature=0.0
+        )
+        return response.choices[0].message.content
+    
+    return answer_question
+
+@pytest.mark.parametrize(
+    "input,expected_output,metadata",
+    qa_test_cases
+)
+@llm_unit()
+def test_qa_accuracy(qa_system, input, expected_output, metadata):
+    """Test QA system accuracy across different categories."""
+    result = qa_system(input["question"])
+    
+    # You can add assertions based on metadata
+    if metadata["difficulty"] == "easy":
+        assert result == expected_output["answer"], "Easy questions should match exactly"
+    else:
+        # For harder questions, check if answer is contained
+        assert expected_output["answer"].lower() in result.lower(), "Answer should be present"
+
+@llm_unit()
+def test_response_format(qa_system):
+    """Test that responses are properly formatted."""
+    input = {"question": "What is 2+2?"}
+    expected_output = {"answer": "4"}
+    
+    result = qa_system(input["question"])
+    
+    # Check format
+    assert isinstance(result, str), "Response should be a string"
+    assert len(result) > 0, "Response should not be empty"
+    assert len(result) < 1000, "Response should be concise"
+
+if __name__ == "__main__":
+    # Run tests
+    pytest.main([__file__, "-v"])
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest test_llm.py
+
+# Run with verbose output
+pytest -v
+
+# Run tests matching a pattern
+pytest -k "test_qa"
+
+# Run with coverage
+pytest --cov
+```
+
+## Viewing Results
+
+After running tests:
+
+1. **In Opik UI**: Navigate to the experiment created for your pytest session
+2. **Each test case** appears as a separate experiment item
+3. **Traces** show the full execution path including nested LLM calls
+4. **Test metadata** (category, difficulty, etc.) is captured
+
+## Integration with Opik Datasets
+
+You can load test data from Opik datasets:
+
+```python
+import pytest
+import opik
+from opik.plugins.pytest import llm_unit
+
+# Load dataset
+client = opik.Opik()
+dataset = client.get_dataset("qa-test-suite")
+items = dataset.get_items()
+
+# Convert to pytest parameters
+test_cases = [
+    (
+        item["input"],
+        item["expected_output"],
+        item.get("metadata", {})
+    )
+    for item in items
+]
+
+@pytest.mark.parametrize(
+    "input,expected_output,metadata",
+    test_cases
+)
+@llm_unit()
+def test_from_dataset(input, expected_output, metadata):
+    """Tests generated from Opik dataset."""
+    result = my_llm(input)
+    assert result == expected_output
+```
+
+## Best Practices
+
+<Tip>
+**Separate Unit and Integration Tests**: Use `@llm_unit` for tests that exercise LLM behavior, not for testing non-LLM code.
+</Tip>
+
+<Tip>
+**Parametrize Extensively**: Use pytest's parametrize to test multiple scenarios with the same test function.
+</Tip>
+
+<Tip>
+**Meaningful Test Names**: Use descriptive test names that explain what behavior is being validated.
+</Tip>
+
+<Tip>
+**Add Metadata**: Include category, difficulty, or other contextual information in metadata to analyze results.
+</Tip>
+
+<Tip>
+**Track Internal Calls**: Use `@opik.track()` on functions called within tests to capture the full execution trace.
+</Tip>
+
+## Environment Configuration
+
+Configure pytest experiment tracking via environment variables:
+
+```bash
+# Enable pytest experiments
+export OPIK_PYTEST_EXPERIMENT_ENABLED=true
+
+# Configure Opik workspace
+export OPIK_WORKSPACE="my-workspace"
+export OPIK_API_KEY="your-api-key"
+
+# Or use local instance
+opik configure --use_local
+```
+
+## Conditional Tracking
+
+Disable tracking when not needed:
+
+```python
+import os
+from opik.plugins.pytest import llm_unit
+
+# Only track in CI or when explicitly enabled
+if os.getenv("CI") or os.getenv("OPIK_PYTEST_EXPERIMENT_ENABLED"):
+    @llm_unit()
+    def test_my_llm(input, expected_output):
+        pass
+else:
+    # Regular test without tracking
+    def test_my_llm(input, expected_output):
+        pass
+```
+
+<Note>
+The `@llm_unit` decorator checks configuration automatically. If pytest experiments are disabled, it acts as a pass-through and doesn't track execution.
+</Note>
+
+## Debugging
+
+Enable debug logging to troubleshoot issues:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+
+# Run your tests
+```
+
+## Example: CI/CD Integration
+
+Run LLM tests in your CI pipeline:
+
+```yaml
+# .github/workflows/test.yml
+name: LLM Tests
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.10'
+      
+      - name: Install dependencies
+        run: |
+          pip install opik pytest
+          pip install -r requirements.txt
+      
+      - name: Configure Opik
+        env:
+          OPIK_API_KEY: ${{ secrets.OPIK_API_KEY }}
+          OPIK_WORKSPACE: ${{ secrets.OPIK_WORKSPACE }}
+          OPIK_PYTEST_EXPERIMENT_ENABLED: true
+        run: |
+          opik configure --api_key $OPIK_API_KEY --workspace $OPIK_WORKSPACE
+      
+      - name: Run LLM tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          pytest tests/ -v
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Evaluation Overview" icon="list" href="/evaluation/overview">
+    Learn about the full evaluation framework
+  </Card>
+  <Card title="Metrics" icon="chart-line" href="/evaluation/metrics">
+    Explore metrics for scoring LLM outputs
+  </Card>
+</CardGroup>

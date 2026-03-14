@@ -1,0 +1,119 @@
+---
+title: "Metrics Overview"
+description: "Learn about Opik's evaluation metrics for assessing LLM outputs"
+---
+
+Opik provides a comprehensive suite of metrics to evaluate your LLM applications. These metrics help you measure the quality, accuracy, and reliability of your AI systems.
+
+## Types of Metrics
+
+Opik offers three main categories of metrics:
+
+<CardGroup cols={3}>
+  <Card title="LLM-as-Judge Metrics" icon="gavel" href="/metrics/llm-as-judge">
+    Use LLMs to evaluate outputs for hallucination, relevance, and more
+  </Card>
+  <Card title="Heuristic Metrics" icon="calculator" href="/metrics/heuristic-metrics">
+    Fast, deterministic metrics like exact match, contains, and similarity
+  </Card>
+  <Card title="Custom Metrics" icon="code" href="/metrics/custom-metrics">
+    Build your own metrics tailored to your specific use case
+  </Card>
+</CardGroup>
+
+## Using Metrics
+
+All metrics in Opik follow a consistent interface. Here's a basic example:
+
+```python
+from opik.evaluation.metrics import Hallucination
+
+# Initialize the metric
+metric = Hallucination()
+
+# Score an output
+result = metric.score(
+    input="What is the capital of France?",
+    output="The capital of France is Paris.",
+    context=["France is a country in Europe. Its capital is Paris."]
+)
+
+print(result.value)   # 0.0 (no hallucination detected)
+print(result.reason)  # Explanation for the score
+```
+
+## Score Results
+
+All metrics return a `ScoreResult` object with the following attributes:
+
+- **`value`** (float): The numeric score (interpretation depends on the metric)
+- **`name`** (str): The metric name
+- **`reason`** (Optional[str]): Explanation for the score (available for LLM-as-judge metrics)
+- **`metadata`** (Optional[Dict]): Additional metadata about the scoring process
+
+## Async Support
+
+All metrics support asynchronous scoring using the `ascore()` method:
+
+```python
+import asyncio
+from opik.evaluation.metrics import AnswerRelevance
+
+async def evaluate():
+    metric = AnswerRelevance()
+    result = await metric.ascore(
+        input="What's the weather like?",
+        output="It's sunny today.",
+        context=["Today's forecast shows sunny skies."]
+    )
+    return result
+
+result = asyncio.run(evaluate())
+```
+
+## Tracking Metrics
+
+By default, metrics are automatically tracked in Opik. You can disable tracking:
+
+```python
+metric = Hallucination(track=False)
+```
+
+You can also specify a project name for tracking:
+
+```python
+metric = Hallucination(project_name="my-evaluation-project")
+```
+
+## Common Metric Parameters
+
+Most metrics share these common parameters:
+
+- **`name`** (str): Custom name for the metric
+- **`track`** (bool): Whether to track the metric (default: `True`)
+- **`project_name`** (Optional[str]): Project name for tracking
+
+### LLM-as-Judge Specific Parameters
+
+LLM-based metrics also support:
+
+- **`model`** (str | OpikBaseModel): The LLM to use for evaluation (default: uses LiteLLM)
+- **`temperature`** (Optional[float]): Sampling temperature for the model
+- **`seed`** (Optional[int]): Random seed for reproducible outputs
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="LLM-as-Judge Metrics" icon="gavel" href="/metrics/llm-as-judge">
+    Explore AI-powered evaluation metrics
+  </Card>
+  <Card title="Heuristic Metrics" icon="calculator" href="/metrics/heuristic-metrics">
+    Learn about deterministic metrics
+  </Card>
+  <Card title="Custom Metrics" icon="code" href="/metrics/custom-metrics">
+    Create your own evaluation metrics
+  </Card>
+  <Card title="Evaluation Guide" icon="flask" href="/evaluation/overview">
+    Learn how to use metrics in evaluations
+  </Card>
+</CardGroup>

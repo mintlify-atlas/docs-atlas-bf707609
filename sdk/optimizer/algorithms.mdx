@@ -1,0 +1,570 @@
+---
+title: "Optimization Algorithms"
+description: "Detailed guide to all available optimization algorithms"
+---
+
+# Optimization Algorithms
+
+The Opik Optimizer SDK provides six optimization algorithms, each suited for different scenarios. All optimizers follow a standardized API with the `optimize_prompt()` method.
+
+## Standardized API
+
+All optimizers share the same interface:
+
+```python
+result = optimizer.optimize_prompt(
+    prompt=prompt,              # ChatPrompt to optimize
+    dataset=dataset,            # Opik Dataset for evaluation
+    metric=metric,              # Callable metric function
+    n_samples=100,              # Number of dataset samples per trial
+    max_trials=10,              # Maximum optimization trials
+    validation_dataset=None,    # Optional validation dataset
+    experiment_config=None,     # Optional experiment metadata
+    auto_continue=False,        # Continue from previous optimization
+    agent_class=None           # Optional custom agent class
+)
+```
+
+## Algorithm Comparison
+
+| Algorithm | Prompt Opt | Tool Opt | Multimodal | Best For |
+|-----------|:----------:|:--------:|:----------:|----------|
+| **Evolutionary** | ✅ | ✅ | ✅ | Creative exploration, diverse variations |
+| **FewShotBayesian** | ✅ | ❌ | ✅ | Adding optimal examples to prompts |
+| **MetaPrompt** | ✅ | ✅ | ✅ | Refining clarity, best practices |
+| **GEPA** | ✅ | ❌ | ✅ | Multi-objective trade-offs |
+| **HRPO** | ✅ | ✅ | ✅ | Complex reasoning tasks |
+| **Parameter** | ❌ | ❌ | ✅ | Tuning model parameters |
+
+## EvolutionaryOptimizer
+
+Uses genetic algorithms to evolve prompts through mutation and crossover operations.
+
+### How It Works
+
+<Steps>
+  <Step title="Generate Candidates">
+    Create variations through:
+    - **Exploitation**: Mutate top-performing prompts
+    - **Exploration**: Generate completely new prompts
+  </Step>
+  <Step title="Evaluate">
+    Score all candidates on the dataset
+  </Step>
+  <Step title="Select">
+    Keep the best prompts based on fitness
+  </Step>
+  <Step title="Repeat">
+    Continue until convergence or max generations
+  </Step>
+</Steps>
+
+### Example
+
+```python
+from opik_optimizer import EvolutionaryOptimizer, ChatPrompt
+from opik_optimizer.datasets import hotpot
+from opik.evaluation.metrics import LevenshteinRatio
+
+dataset = hotpot(count=50)
+
+prompt = ChatPrompt(
+    system="Answer questions accurately and concisely.",
+    user="{question}"
+)
+
+optimizer = EvolutionaryOptimizer(
+    model="gpt-4o-mini",
+    population_size=10,          # Prompts per generation
+    num_generations=5,           # Number of generations
+    mutation_rate=0.3,           # Mutation probability
+    crossover_rate=0.5,          # Crossover probability
+    enable_moo=False,            # Multi-objective optimization
+    enable_llm_crossover=True,   # LLM-based crossover
+    adaptive_mutation=True,      # Adjust mutation rate dynamically
+    infer_output_style=True,     # Infer style from dataset
+    verbose=1
+)
+
+def metric(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"],
+        output=llm_output
+    )
+
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    n_samples=20,
+    max_trials=5
+)
+
+result.display()
+```
+
+### Key Parameters
+
+- `population_size`: Number of prompts in each generation (default: 10)
+- `num_generations`: How many generations to evolve (default: 5)
+- `enable_moo`: Enable multi-objective optimization (balances metric score vs prompt length)
+- `enable_llm_crossover`: Use LLM to combine prompts (vs random crossover)
+- `adaptive_mutation`: Adjust mutation rate based on population diversity
+- `infer_output_style`: Automatically detect desired output style from dataset
+
+<Note>
+  This algorithm is time-consuming but excellent for finding creative prompt variations.
+</Note>
+
+## FewShotBayesianOptimizer
+
+Adds optimal few-shot examples to prompts using Bayesian optimization.
+
+### How It Works
+
+<Steps>
+  <Step title="Generate Template">
+    Create a few-shot prompt template that can be inserted into your prompt
+  </Step>
+  <Step title="Bayesian Search">
+    Use Bayesian optimization to find the best examples and quantity
+  </Step>
+  <Step title="Evaluate">
+    Score prompts with different example combinations
+  </Step>
+  <Step title="Select Best">
+    Return the prompt with optimal examples
+  </Step>
+</Steps>
+
+### Example
+
+```python
+from opik_optimizer import FewShotBayesianOptimizer, ChatPrompt
+from opik_optimizer.datasets import hotpot
+from opik.evaluation.metrics import LevenshteinRatio
+
+dataset = hotpot(count=300)
+
+prompt = ChatPrompt(
+    system="You are a helpful assistant.",
+    user="{question}"
+)
+
+optimizer = FewShotBayesianOptimizer(
+    model="gpt-4o-mini",
+    min_examples=3,              # Minimum examples to include
+    max_examples=8,              # Maximum examples to include
+    n_threads=16,                # Parallel evaluation threads
+    enable_columnar_selection=True,  # Column-aware grouping
+    enable_multivariate_tpe=True,    # Multivariate sampling
+    enable_optuna_pruning=True,      # Early stopping
+    seed=42
+)
+
+def metric(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"],
+        output=llm_output
+    )
+
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    n_samples=150,
+    max_trials=20
+)
+
+result.display()
+```
+
+### Key Parameters
+
+- `min_examples`: Minimum number of few-shot examples (default: 3)
+- `max_examples`: Maximum number of few-shot examples (default: 8)
+- `enable_columnar_selection`: Group examples by dataset columns
+- `enable_multivariate_tpe`: Use Optuna's multivariate sampler for better exploration
+- `enable_optuna_pruning`: Stop unpromising trials early
+
+<Tip>
+  Best for tasks where providing examples significantly improves performance.
+</Tip>
+
+## MetaPromptOptimizer
+
+Uses LLM-based meta-reasoning to iteratively improve prompts.
+
+### How It Works
+
+<Steps>
+  <Step title="Evaluate Current Prompt">
+    Score the prompt on the dataset
+  </Step>
+  <Step title="Analyze Performance">
+    Use an LLM to reason about what changes would improve performance
+  </Step>
+  <Step title="Generate Candidates">
+    Create prompt variations based on the analysis
+  </Step>
+  <Step title="Select Best">
+    Evaluate candidates and keep the top performer
+  </Step>
+  <Step title="Repeat">
+    Continue until max trials or performance plateaus
+  </Step>
+</Steps>
+
+### Example
+
+```python
+from opik_optimizer import MetaPromptOptimizer, ChatPrompt
+from opik_optimizer.datasets import hotpot
+from opik.evaluation.metrics import LevenshteinRatio
+
+dataset = hotpot(count=50)
+
+prompt = ChatPrompt(
+    system="Answer questions accurately.",
+    user="{question}"
+)
+
+optimizer = MetaPromptOptimizer(
+    model="gpt-4o-mini",
+    prompts_per_round=4,         # Candidates per round
+    enable_context=True,         # Include task examples in reasoning
+    num_task_examples=10,        # Number of examples to show
+    task_context_columns=None,   # Columns to include (None = all)
+    use_hall_of_fame=True,       # Extract patterns from best prompts
+    n_threads=16,
+    verbose=1
+)
+
+def metric(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"],
+        output=llm_output
+    )
+
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    n_samples=20,
+    max_trials=5
+)
+
+result.display()
+```
+
+### Key Parameters
+
+- `prompts_per_round`: Number of candidate prompts per iteration (default: 4)
+- `enable_context`: Include dataset examples when reasoning (default: True)
+- `num_task_examples`: How many examples to show in context (default: 10)
+- `use_hall_of_fame`: Extract patterns from successful prompts (default: True)
+- `task_context_columns`: Specific columns to include in context (None = all input columns)
+
+<Info>
+  Excellent for refining prompts for clarity, best practices, and specific metrics.
+</Info>
+
+## GepaOptimizer
+
+Genetic-Pareto optimization balancing multiple objectives.
+
+### How It Works
+
+GEPA uses genetic algorithms with Pareto optimization to find prompts that balance trade-offs between different quality metrics.
+
+### Example
+
+```python
+from opik_optimizer import GepaOptimizer, ChatPrompt
+from opik_optimizer.datasets import tiny_test
+from opik.evaluation.metrics import LevenshteinRatio
+
+dataset = tiny_test()
+
+prompt = ChatPrompt(
+    system="You are a helpful assistant.",
+    user="{text}"
+)
+
+optimizer = GepaOptimizer(
+    model="gpt-4o-mini",
+    n_threads=4,
+    verbose=1,
+    seed=42
+)
+
+def metric(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["label"],
+        output=llm_output
+    )
+
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    max_trials=12,
+    reflection_minibatch_size=2,
+    n_samples=5
+)
+
+result.display()
+```
+
+### Key Parameters
+
+- `reflection_minibatch_size`: Number of samples for reflection (passed to `optimize_prompt`)
+- `max_trials`: Total optimization trials
+
+<Warning>
+  GEPA does not currently support tool optimization. It's best for prompt-only optimization tasks.
+</Warning>
+
+## HierarchicalReflectiveOptimizer (HRPO)
+
+Multi-stage reflective optimization with hierarchical analysis.
+
+### Example
+
+```python
+from opik_optimizer import HRPO, ChatPrompt
+from opik_optimizer.datasets import hotpot
+from opik.evaluation.metrics import LevenshteinRatio
+
+dataset = hotpot(count=100)
+
+prompt = ChatPrompt(
+    system="Answer questions accurately.",
+    user="{question}"
+)
+
+optimizer = HRPO(
+    model="gpt-4o-mini",
+    n_threads=8,
+    verbose=1
+)
+
+def metric(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"],
+        output=llm_output
+    )
+
+result = optimizer.optimize_prompt(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    n_samples=50,
+    max_trials=10
+)
+
+result.display()
+```
+
+<Note>
+  HRPO (Hierarchical Reflective Prompt Optimizer) is best for complex reasoning tasks requiring deep analysis.
+</Note>
+
+## ParameterOptimizer
+
+Optimizes LLM parameters (temperature, top_p, etc.) using Bayesian optimization.
+
+### How It Works
+
+<Steps>
+  <Step title="Define Search Space">
+    Specify which parameters to optimize and their ranges
+  </Step>
+  <Step title="Bayesian Search">
+    Use Optuna to efficiently explore parameter combinations
+  </Step>
+  <Step title="Evaluate">
+    Score each parameter configuration on the dataset
+  </Step>
+  <Step title="Return Best">
+    Select the parameter set with highest performance
+  </Step>
+</Steps>
+
+### Example
+
+```python
+from opik_optimizer import ParameterOptimizer, ParameterSearchSpace, ChatPrompt
+from opik_optimizer.datasets import hotpot
+from opik.evaluation.metrics import LevenshteinRatio
+
+dataset = hotpot(count=50)
+
+prompt = ChatPrompt(
+    system="Answer questions accurately.",
+    user="{question}"
+)
+
+optimizer = ParameterOptimizer(
+    model="gpt-4o-mini",
+    default_n_trials=20,
+    local_search_ratio=0.3,      # Ratio for local refinement
+    local_search_scale=0.5,      # Scale for narrowing search
+    n_threads=4,
+    seed=42
+)
+
+# Define parameter search space
+parameter_space = ParameterSearchSpace.model_validate({
+    "temperature": {"type": "float", "min": 0.0, "max": 1.0},
+    "top_p": {"type": "float", "min": 0.3, "max": 1.0},
+    "frequency_penalty": {"type": "float", "min": -1.0, "max": 1.0}
+})
+
+def metric(dataset_item, llm_output):
+    return LevenshteinRatio().score(
+        reference=dataset_item["answer"],
+        output=llm_output
+    )
+
+result = optimizer.optimize_parameter(
+    prompt=prompt,
+    dataset=dataset,
+    metric=metric,
+    parameter_space=parameter_space,
+    n_samples=20,
+    max_trials=10
+)
+
+result.display()
+print(f"Optimal parameters: {result.details.get('best_parameters')}")
+```
+
+### Parameter Types
+
+<CodeGroup>
+```python Float
+{
+    "temperature": {
+        "type": "float",
+        "min": 0.0,
+        "max": 1.0
+    }
+}
+```
+
+```python Integer
+{
+    "max_tokens": {
+        "type": "int",
+        "min": 100,
+        "max": 4000
+    }
+}
+```
+
+```python Categorical
+{
+    "stop": {
+        "type": "categorical",
+        "choices": [None, ["\n"], ["END"]]
+    }
+}
+```
+</CodeGroup>
+
+### Key Parameters
+
+- `default_n_trials`: Default number of trials (default: 20)
+- `local_search_ratio`: Proportion of trials for local refinement (0.0-1.0)
+- `local_search_scale`: How much to narrow search space during local search
+
+<Tip>
+  Use this when you have a good prompt but want to fine-tune model behavior.
+</Tip>
+
+## Chaining Optimizers
+
+One of the most powerful features is chaining different optimizers:
+
+```python
+from opik_optimizer import (
+    FewShotBayesianOptimizer,
+    MetaPromptOptimizer,
+    ParameterOptimizer,
+    ChatPrompt
+)
+
+# Step 1: Add few-shot examples
+few_shot = FewShotBayesianOptimizer(model="gpt-4o-mini")
+result1 = few_shot.optimize_prompt(
+    prompt=initial_prompt,
+    dataset=dataset,
+    metric=metric,
+    n_samples=100
+)
+
+# Step 2: Refine with meta-prompting
+meta = MetaPromptOptimizer(model="gpt-4o-mini")
+result2 = meta.optimize_prompt(
+    prompt=ChatPrompt.from_result(result1),
+    dataset=dataset,
+    metric=metric,
+    n_samples=100
+)
+
+# Step 3: Optimize parameters
+param = ParameterOptimizer(model="gpt-4o-mini")
+final_result = param.optimize_parameter(
+    prompt=ChatPrompt.from_result(result2),
+    dataset=dataset,
+    metric=metric,
+    parameter_space=param_space,
+    n_samples=100
+)
+
+final_result.display()
+```
+
+## Optimization Results
+
+All optimizers return an `OptimizationResult` object:
+
+```python
+result = optimizer.optimize_prompt(...)
+
+# Display formatted results
+result.display()
+
+# Access result properties
+print(f"Initial score: {result.initial_score}")
+print(f"Final score: {result.score}")
+print(f"Improvement: {result.score - result.initial_score}")
+
+# Get the optimized prompt
+optimized_prompt = result.prompt
+
+# Access optimization history
+for round_info in result.history.rounds:
+    print(f"Round {round_info.round_index}: {round_info.best_score}")
+
+# View additional details
+print(result.details)  # Algorithm-specific metadata
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Overview" icon="compass" href="/sdk/optimizer/overview">
+    Learn about Optimizer SDK features
+  </Card>
+  <Card title="Agents" icon="robot" href="/sdk/optimizer/agents">
+    Deep dive into agent optimization
+  </Card>
+  <Card title="API Reference" icon="book" href="/sdk/optimizer/overview">
+    View complete API documentation
+  </Card>
+  <Card title="Examples" icon="code" href="https://github.com/comet-ml/opik/tree/main/sdks/opik_optimizer/scripts/optimizer_algorithms">
+    Browse algorithm examples on GitHub
+  </Card>
+</CardGroup>

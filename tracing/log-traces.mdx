@@ -1,0 +1,538 @@
+---
+title: "Log Traces"
+description: "Learn how to create and log traces manually using the Opik client"
+---
+
+While the `@track` decorator is the recommended way to add tracing, you can also create traces and spans manually using the Opik client. This gives you complete control over the tracing process.
+
+## Creating Traces Manually
+
+### Basic Trace Creation
+
+Create a trace using the Opik client:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(
+    name="customer-support-query",
+    input={"question": "How do I reset my password?"},
+    metadata={"user_id": "user-123", "channel": "web"},
+    tags=["support", "authentication"]
+)
+
+# Your application logic here
+result = process_query(trace.input["question"])
+
+# Update the trace with output
+trace.update(
+    output={"answer": result},
+)
+
+# End the trace
+trace.end()
+```
+
+### Trace with Spans
+
+Create a hierarchical structure of spans within a trace:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Create the trace
+trace = client.trace(name="rag-pipeline")
+
+# Create spans for different steps
+retrieval_span = trace.span(
+    name="retrieve-documents",
+    type="tool",
+    input={"query": "What is machine learning?"}
+)
+retrieval_span.update(output={"documents": ["doc1", "doc2"]})
+retrieval_span.end()
+
+llm_span = trace.span(
+    name="generate-response",
+    type="llm",
+    input={"query": "What is machine learning?", "context": ["doc1", "doc2"]},
+    model="gpt-4",
+    provider="openai"
+)
+llm_span.update(
+    output={"response": "Machine learning is..."},
+    usage={"prompt_tokens": 150, "completion_tokens": 50, "total_tokens": 200}
+)
+llm_span.end()
+
+# End the trace
+trace.end()
+```
+
+### Nested Spans
+
+Create nested spans to represent hierarchical operations:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(name="multi-step-workflow")
+
+# Parent span
+processing_span = trace.span(name="data-processing")
+
+# Child spans
+validation_span = processing_span.span(
+    name="validate-input",
+    type="tool",
+    input={"data": "raw data"}
+)
+validation_span.end()
+
+transformation_span = processing_span.span(
+    name="transform-data",
+    type="tool"
+)
+transformation_span.end()
+
+processing_span.end()
+trace.end()
+```
+
+## Context Managers
+
+Opik provides context managers for cleaner trace and span management.
+
+### Using start_as_current_trace
+
+```python
+from opik import start_as_current_trace
+
+with start_as_current_trace(
+    name="my-workflow",
+    input={"query": "input data"},
+    tags=["production"],
+    metadata={"version": "2.0"},
+    project_name="my-project"
+) as trace:
+    # Your code here
+    result = process_data()
+    
+    # Update trace
+    trace.update(output={"result": result})
+    # Trace automatically ends when exiting the context
+```
+
+### Using start_as_current_span
+
+```python
+from opik import start_as_current_span, start_as_current_trace
+
+with start_as_current_trace(name="pipeline") as trace:
+    with start_as_current_span(
+        name="step-1",
+        type="tool",
+        input={"data": "input"}
+    ) as span1:
+        result1 = step1()
+        span1.update(output={"result": result1})
+    
+    with start_as_current_span(
+        name="step-2",
+        type="llm",
+        model="gpt-4",
+        provider="openai"
+    ) as span2:
+        result2 = step2(result1)
+        span2.update(
+            output={"result": result2},
+            usage={"prompt_tokens": 100, "completion_tokens": 50}
+        )
+```
+
+<Info>
+Context managers automatically handle span/trace ending and error tracking, even if exceptions are raised.
+</Info>
+
+## Updating Traces and Spans
+
+### Update Methods
+
+You can update trace and span properties:
+
+```python
+import opik
+
+client = opik.Opik()
+trace = client.trace(name="initial-name")
+span = trace.span(name="my-span", type="llm")
+
+# Update span
+span.update(
+    name="updated-span-name",
+    output={"response": "LLM output"},
+    metadata={"temperature": 0.7},
+    tags=["important"],
+    usage={"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150},
+    model="gpt-4",
+    provider="openai"
+)
+
+# Update trace
+trace.update(
+    name="updated-trace-name",
+    output={"final_result": "result"},
+    metadata={"duration_ms": 1500},
+    tags=["production"]
+)
+
+span.end()
+trace.end()
+```
+
+### Using opik_context
+
+When working with decorators or context managers, use `opik_context` to update the current trace or span:
+
+```python
+from opik import track, opik_context
+
+@track
+def my_function(prompt):
+    # Update current span
+    opik_context.update_current_span(
+        metadata={"custom_field": "value"},
+        tags=["processed"]
+    )
+    
+    result = process(prompt)
+    
+    # Update current trace
+    opik_context.update_current_trace(
+        metadata={"total_steps": 5},
+        tags=["completed"]
+    )
+    
+    return result
+```
+
+## Trace and Span Properties
+
+### Trace Properties
+
+<ParamField path="name" type="str">
+  Name of the trace for identification
+</ParamField>
+
+<ParamField path="input" type="dict">
+  Input data passed to the trace
+</ParamField>
+
+<ParamField path="output" type="dict">
+  Output data produced by the trace
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Custom metadata as key-value pairs
+</ParamField>
+
+<ParamField path="tags" type="list[str]">
+  List of tags for categorization
+</ParamField>
+
+<ParamField path="feedback_scores" type="list[dict]">
+  List of feedback scores (see [Annotate Traces](/tracing/annotate-traces))
+</ParamField>
+
+<ParamField path="project_name" type="str">
+  Project to log the trace to
+</ParamField>
+
+<ParamField path="thread_id" type="str">
+  Thread identifier to group related traces
+</ParamField>
+
+### Span Properties
+
+<ParamField path="name" type="str">
+  Name of the span
+</ParamField>
+
+<ParamField path="type" type="str">
+  Span type: `general`, `llm`, `tool`, or `guardrail`
+</ParamField>
+
+<ParamField path="input" type="dict">
+  Input data for the span
+</ParamField>
+
+<ParamField path="output" type="dict">
+  Output data from the span
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Custom metadata
+</ParamField>
+
+<ParamField path="tags" type="list[str]">
+  Tags for the span
+</ParamField>
+
+<ParamField path="model" type="str">
+  Model name (for LLM spans)
+</ParamField>
+
+<ParamField path="provider" type="str">
+  Provider name (for LLM spans)
+</ParamField>
+
+<ParamField path="usage" type="dict">
+  Token usage information with keys: `prompt_tokens`, `completion_tokens`, `total_tokens`
+</ParamField>
+
+<ParamField path="total_cost" type="float">
+  Total cost in USD (overrides automatic cost calculation)
+</ParamField>
+
+<ParamField path="feedback_scores" type="list[dict]">
+  Feedback scores for the span
+</ParamField>
+
+## Error Handling
+
+Opik automatically captures errors in traces and spans:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(name="error-example")
+span = trace.span(name="failing-operation")
+
+try:
+    # Code that might fail
+    raise ValueError("Something went wrong")
+except Exception as e:
+    # Error is automatically captured
+    span.end()
+    trace.end()
+    raise
+```
+
+With context managers, errors are captured automatically:
+
+```python
+from opik import start_as_current_trace, start_as_current_span
+
+with start_as_current_trace(name="error-trace") as trace:
+    with start_as_current_span(name="error-span") as span:
+        raise ValueError("Error message")
+        # Error info is automatically added to span and trace
+```
+
+## Project Organization
+
+Organize traces into projects:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Create trace in specific project
+trace = client.trace(
+    name="my-trace",
+    project_name="production-chatbot"
+)
+
+span = trace.span(name="my-span")
+span.end()
+trace.end()
+```
+
+Or set a default project:
+
+```python
+import opik
+
+client = opik.Opik(project_name="my-project")
+
+# All traces will use "my-project" by default
+trace = client.trace(name="trace-1")
+trace.end()
+```
+
+## Thread Grouping
+
+Group related traces into threads using `thread_id`:
+
+```python
+import opik
+
+client = opik.Opik()
+conversation_id = "conv-123"
+
+# First message in conversation
+trace1 = client.trace(
+    name="user-message-1",
+    thread_id=conversation_id,
+    input={"message": "Hello"}
+)
+trace1.end()
+
+# Second message in same conversation
+trace2 = client.trace(
+    name="user-message-2",
+    thread_id=conversation_id,
+    input={"message": "How are you?"}
+)
+trace2.end()
+```
+
+## Flushing Data
+
+Opik buffers traces before sending them to the server. To ensure all data is sent:
+
+```python
+import opik
+
+client = opik.Opik()
+
+trace = client.trace(name="my-trace")
+trace.end()
+
+# Flush all pending traces
+client.flush()
+
+# Or use end() which automatically flushes
+client.end()
+```
+
+With decorators:
+
+```python
+from opik import track, flush_tracker
+
+@track
+def my_function():
+    return "result"
+
+my_function()
+
+# Flush all tracked data
+flush_tracker()
+```
+
+## Examples
+
+### Complete RAG Pipeline
+
+```python
+import opik
+
+client = opik.Opik(project_name="rag-app")
+
+# Create trace for user query
+trace = client.trace(
+    name="rag-query",
+    input={"question": "What is Opik?"},
+    metadata={"user_id": "user-456"},
+    tags=["production"]
+)
+
+# Retrieval step
+retrieval_span = trace.span(
+    name="retrieve-documents",
+    type="tool",
+    input={"query": "What is Opik?"}
+)
+documents = ["Opik is an observability platform...", "Opik helps trace LLMs..."]
+retrieval_span.update(
+    output={"documents": documents},
+    metadata={"num_docs": len(documents)}
+)
+retrieval_span.end()
+
+# Generation step
+generation_span = trace.span(
+    name="generate-answer",
+    type="llm",
+    input={"question": "What is Opik?", "context": documents},
+    model="gpt-4",
+    provider="openai"
+)
+
+answer = "Opik is an open-source observability platform for LLM applications."
+
+generation_span.update(
+    output={"answer": answer},
+    usage={"prompt_tokens": 200, "completion_tokens": 30, "total_tokens": 230}
+)
+generation_span.end()
+
+# Complete the trace
+trace.update(output={"answer": answer})
+trace.end()
+
+client.flush()
+```
+
+### Multi-Agent System
+
+```python
+import opik
+
+client = opik.Opik(project_name="multi-agent")
+
+trace = client.trace(name="agent-coordination", input={"task": "Research topic"})
+
+# Planner agent
+planner = trace.span(name="planner-agent", type="llm", model="gpt-4")
+plan = ["step1", "step2", "step3"]
+planner.update(output={"plan": plan})
+planner.end()
+
+# Researcher agent
+researcher = trace.span(name="researcher-agent", type="llm", model="gpt-4")
+findings = "Research findings..."
+researcher.update(output={"findings": findings})
+researcher.end()
+
+# Writer agent
+writer = trace.span(name="writer-agent", type="llm", model="gpt-4")
+report = "Final report..."
+writer.update(output={"report": report})
+writer.end()
+
+trace.update(output={"report": report})
+trace.end()
+
+client.flush()
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Track Decorator" icon="at" href="/tracing/track-decorator">
+    Learn about the simpler @track decorator approach
+  </Card>
+  
+  <Card title="Annotate Traces" icon="pen" href="/tracing/annotate-traces">
+    Add feedback scores and annotations
+  </Card>
+  
+  <Card title="Attachments" icon="paperclip" href="/tracing/attachments">
+    Attach files to traces and spans
+  </Card>
+  
+  <Card title="Integrations" icon="plug" href="/tracing/integrations">
+    Use automatic tracing with integrations
+  </Card>
+</CardGroup>

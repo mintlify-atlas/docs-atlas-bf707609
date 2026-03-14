@@ -1,0 +1,283 @@
+---
+title: "LlamaIndex Integration"
+description: "Monitor LlamaIndex applications with Opik's callback handler"
+icon: "database"
+---
+
+The Opik LlamaIndex integration provides automatic tracing for LlamaIndex applications, capturing query operations, index construction, and LLM interactions.
+
+## Installation
+
+Install Opik with LlamaIndex:
+
+```bash
+pip install opik llama-index llama-index-core
+```
+
+## Quick Start
+
+Set up the callback handler to trace LlamaIndex operations:
+
+```python
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from llama_index.core.callbacks import CallbackManager
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+# Initialize Opik callback handler
+opik_callback = LlamaIndexCallbackHandler(project_name="llama-index-app")
+
+# Configure LlamaIndex to use Opik
+Settings.callback_manager = CallbackManager([opik_callback])
+
+# Build your index and query
+documents = SimpleDirectoryReader("./data").load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+query_engine = index.as_query_engine()
+response = query_engine.query("What is the main topic of these documents?")
+
+# Flush to ensure traces are sent
+opik_callback.flush()
+print(response)
+```
+
+## Configuration Options
+
+<ParamField path="project_name" type="str" optional>
+  Name of the Opik project to log traces to
+</ParamField>
+
+<ParamField path="event_starts_to_ignore" type="List[CBEventType]" optional>
+  Event start types to be ignored during tracing. Use to reduce noise from specific operations
+</ParamField>
+
+<ParamField path="event_ends_to_ignore" type="List[CBEventType]" optional>
+  Event end types to be ignored during tracing
+</ParamField>
+
+<ParamField path="skip_index_construction_trace" type="bool" default="false">
+  Whether to skip tracing index construction operations. Set to `true` to only trace queries
+</ParamField>
+
+## Skipping Index Construction
+
+For production applications, you may want to trace only queries and skip index construction:
+
+```python
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+opik_callback = LlamaIndexCallbackHandler(
+    project_name="production-queries",
+    skip_index_construction_trace=True
+)
+```
+
+## Advanced Usage
+
+### Filtering Events
+
+Ignore specific event types to reduce trace volume:
+
+```python
+from llama_index.core.callbacks.schema import CBEventType
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+opik_callback = LlamaIndexCallbackHandler(
+    project_name="filtered-traces",
+    event_starts_to_ignore=[CBEventType.CHUNKING],
+    event_ends_to_ignore=[CBEventType.CHUNKING]
+)
+```
+
+### Multi-Index Application
+
+```python
+from llama_index.core import VectorStoreIndex, Settings
+from llama_index.core.callbacks import CallbackManager
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+# Set up callback
+opik_callback = LlamaIndexCallbackHandler(project_name="multi-index")
+Settings.callback_manager = CallbackManager([opik_callback])
+
+# Create multiple indices
+docs_index = VectorStoreIndex.from_documents(documentation)
+code_index = VectorStoreIndex.from_documents(code_samples)
+
+# Query different indices - all will be traced
+docs_response = docs_index.as_query_engine().query("How do I install?")
+code_response = code_index.as_query_engine().query("Show me an example")
+
+opik_callback.flush()
+```
+
+## Combining with @track Decorator
+
+Integrate LlamaIndex tracing with custom tracked functions:
+
+```python
+import opik
+from llama_index.core import Settings
+from llama_index.core.callbacks import CallbackManager
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+# Configure callback
+opik_callback = LlamaIndexCallbackHandler()
+Settings.callback_manager = CallbackManager([opik_callback])
+
+@opik.track
+def answer_question(index, question: str) -> str:
+    query_engine = index.as_query_engine()
+    response = query_engine.query(question)
+    return str(response)
+
+# Both the function and LlamaIndex operations are traced
+result = answer_question(index, "What are the key features?")
+opik_callback.flush()
+```
+
+## What Gets Tracked
+
+The callback handler automatically captures:
+
+- **Queries**: Query text, results, and relevance scores
+- **Index Construction**: Document processing and embedding generation
+- **LLM Calls**: Model requests, responses, and token usage
+- **Retrievals**: Retrieved chunks and similarity scores
+- **Embeddings**: Embedding generation for queries and documents
+- **Synthesis**: Response synthesis from retrieved context
+
+## Token Usage Tracking
+
+Token usage is automatically extracted for LLM calls made through LlamaIndex:
+
+```python
+from llama_index.llms.openai import OpenAI
+from llama_index.core import Settings
+
+# Token usage will be tracked automatically
+Settings.llm = OpenAI(model="gpt-4", temperature=0.1)
+```
+
+Usage metrics appear in the Opik dashboard under each LLM span.
+
+## Example: RAG with Custom Prompts
+
+```python
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from llama_index.core.callbacks import CallbackManager
+from llama_index.core.prompts import PromptTemplate
+from llama_index.llms.openai import OpenAI
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+# Configure Opik
+opik_callback = LlamaIndexCallbackHandler(
+    project_name="custom-rag",
+    skip_index_construction_trace=True
+)
+Settings.callback_manager = CallbackManager([opik_callback])
+
+# Set up LLM
+Settings.llm = OpenAI(model="gpt-4", temperature=0.7)
+
+# Load and index documents
+documents = SimpleDirectoryReader("./knowledge_base").load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+# Custom prompt template
+template = (
+    "Context information is below.\n"
+    "---------------------\n"
+    "{context_str}\n"
+    "---------------------\n"
+    "Given the context information, answer the question: {query_str}\n"
+    "If the context doesn't contain the answer, say 'I don't have enough information.'\n"
+)
+prompt = PromptTemplate(template)
+
+# Query with custom prompt
+query_engine = index.as_query_engine(text_qa_template=prompt)
+response = query_engine.query("How does the system handle authentication?")
+
+opik_callback.flush()
+print(response)
+```
+
+## Example: Chat Engine
+
+```python
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from llama_index.core.callbacks import CallbackManager
+from llama_index.core.memory import ChatMemoryBuffer
+from opik.integrations.llama_index import LlamaIndexCallbackHandler
+
+# Configure tracing
+opik_callback = LlamaIndexCallbackHandler(project_name="chat-app")
+Settings.callback_manager = CallbackManager([opik_callback])
+
+# Build index and chat engine
+documents = SimpleDirectoryReader("./docs").load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+memory = ChatMemoryBuffer.from_defaults(token_limit=1500)
+chat_engine = index.as_chat_engine(
+    chat_mode="context",
+    memory=memory,
+    system_prompt="You are a helpful assistant with access to documentation."
+)
+
+# Multi-turn conversation - all traced
+response1 = chat_engine.chat("What is the installation process?")
+response2 = chat_engine.chat("What are the system requirements?")
+response3 = chat_engine.chat("Can you summarize the previous answers?")
+
+opik_callback.flush()
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Settings singleton issues with tests">
+    When running parameterized tests, manually reset transformations to avoid callback conflicts:
+    
+    ```python
+    Settings.transformations = None
+    Settings.callback_manager = CallbackManager([new_callback])
+    ```
+  </Accordion>
+  
+  <Accordion title="Traces not appearing">
+    Ensure you call `opik_callback.flush()` before your script exits to send pending traces.
+  </Accordion>
+  
+  <Accordion title="Missing token usage">
+    Token usage is only available for LLM providers that return usage information. Verify your LLM client returns token counts.
+  </Accordion>
+</AccordionGroup>
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Skip Index Construction" icon="forward">
+    In production, set `skip_index_construction_trace=True` to focus on query performance.
+  </Card>
+  
+  <Card title="Filter Noisy Events" icon="filter">
+    Use `event_starts_to_ignore` and `event_ends_to_ignore` to reduce trace volume.
+  </Card>
+  
+  <Card title="Flush Explicitly" icon="database">
+    Always call `flush()` to ensure traces are sent before program termination.
+  </Card>
+  
+  <Card title="Use Project Names" icon="folder">
+    Separate development, staging, and production traces with different project names.
+  </Card>
+</CardGroup>
+
+## Reference
+
+For more information:
+- [LlamaIndex Documentation](https://docs.llamaindex.ai/)
+- [Opik Tracing Guide](/tracing/overview)
+- [LlamaIndexCallbackHandler API](/api-reference/integrations/llama-index)

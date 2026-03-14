@@ -1,0 +1,476 @@
+---
+title: LiteLLM Integration
+description: Track and monitor LiteLLM calls across multiple providers with Opik
+---
+
+Opik provides integration with LiteLLM, allowing you to track calls across 100+ LLM providers through a unified interface. LiteLLM acts as a proxy layer that translates calls to different provider APIs.
+
+<Note>
+This integration is currently not exposed in the main documentation as it's primarily used internally by other integrations (like CrewAI). However, it can be used directly for advanced use cases.
+</Note>
+
+## Installation
+
+First, ensure you have both Opik and LiteLLM installed:
+
+```bash
+pip install opik litellm
+```
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure Opik">
+    Initialize Opik in your application:
+
+    ```python
+    import opik
+
+    opik.configure()
+    ```
+  </Step>
+
+  <Step title="Wrap LiteLLM functions">
+    Use the `track_completion` decorator to wrap LiteLLM completion functions:
+
+    ```python
+    import litellm
+    from opik.integrations.litellm import track_completion
+
+    tracked_completion = track_completion()(litellm.completion)
+    ```
+  </Step>
+
+  <Step title="Use LiteLLM as normal">
+    All your LiteLLM calls will now be automatically tracked:
+
+    ```python
+    response = tracked_completion(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": "Hello!"}]
+    )
+    ```
+  </Step>
+</Steps>
+
+## Supported Features
+
+The Opik LiteLLM integration tracks:
+
+- `litellm.completion()` - Synchronous completions
+- `litellm.acompletion()` - Async completions
+- Both streaming and non-streaming modes
+- All 100+ LiteLLM-supported providers
+
+## Usage Examples
+
+### Basic Completion Tracking
+
+```python
+import litellm
+from opik import flush_tracker
+from opik.integrations.litellm import track_completion
+
+# Wrap the completion function
+tracked_completion = track_completion(project_name="litellm-project")(litellm.completion)
+
+response = tracked_completion(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is LiteLLM?"}
+    ]
+)
+
+print(response.choices[0].message.content)
+flush_tracker()
+```
+
+### Streaming Responses
+
+```python
+import litellm
+from opik import flush_tracker
+from opik.integrations.litellm import track_completion
+
+tracked_completion = track_completion()(litellm.completion)
+
+response = tracked_completion(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True
+)
+
+for chunk in response:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+print()
+
+flush_tracker()
+```
+
+### Async Completions
+
+```python
+import asyncio
+import litellm
+from opik import flush_tracker
+from opik.integrations.litellm import track_completion
+
+tracked_acompletion = track_completion()(litellm.acompletion)
+
+async def async_chat():
+    response = await tracked_acompletion(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "user", "content": "Hello async!"}]
+    )
+    return response.choices[0].message.content
+
+result = asyncio.run(async_chat())
+print(result)
+flush_tracker()
+```
+
+### Using Different Providers
+
+LiteLLM supports 100+ providers - just change the model name:
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```python
+    response = tracked_completion(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Anthropic">
+    ```python
+    response = tracked_completion(
+        model="claude-3-sonnet-20240229",
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Gemini">
+    ```python
+    response = tracked_completion(
+        model="gemini/gemini-pro",
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Bedrock">
+    ```python
+    response = tracked_completion(
+        model="bedrock/anthropic.claude-3-sonnet-20240229-v1:0",
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+    ```
+  </Tab>
+  
+  <Tab title="Azure">
+    ```python
+    response = tracked_completion(
+        model="azure/gpt-4",
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+    ```
+  </Tab>
+</Tabs>
+
+### With Custom Tracking
+
+Combine with Opik's `@track` decorator for nested tracking:
+
+```python
+import litellm
+from opik import track, flush_tracker
+from opik.integrations.litellm import track_completion
+
+tracked_completion = track_completion()(litellm.completion)
+
+@track()
+def ask_multiple_models(question: str):
+    models = ["gpt-3.5-turbo", "claude-3-haiku-20240307"]
+    responses = []
+    
+    for model in models:
+        response = tracked_completion(
+            model=model,
+            messages=[{"role": "user", "content": question}]
+        )
+        responses.append({
+            "model": model,
+            "answer": response.choices[0].message.content
+        })
+    
+    return responses
+
+results = ask_multiple_models("What is AI?")
+for result in results:
+    print(f"{result['model']}: {result['answer']}\n")
+
+flush_tracker()
+```
+
+## Configuration Options
+
+### Project Name
+
+Specify a custom project name for organizing your traces:
+
+```python
+tracked_completion = track_completion(project_name="my-litellm-project")(litellm.completion)
+```
+
+### Using as a Decorator
+
+You can also use it as a function decorator:
+
+```python
+from opik import track
+from opik.integrations.litellm import track_completion
+
+@track()
+def my_llm_function(prompt: str):
+    import litellm
+    
+    @track_completion(project_name="nested-project")
+    def get_response(messages):
+        return litellm.completion(
+            model="gpt-3.5-turbo",
+            messages=messages
+        )
+    
+    response = get_response([{"role": "user", "content": prompt}])
+    return response.choices[0].message.content
+```
+
+## What Gets Tracked
+
+For each LiteLLM call, Opik captures:
+
+<CardGroup cols={2}>
+  <Card title="Input" icon="arrow-right-to-bracket">
+    - Messages and prompts
+    - Model name and provider
+    - All request parameters
+    - Temperature, max tokens, etc.
+  </Card>
+
+  <Card title="Output" icon="arrow-left-from-bracket">
+    - Model responses
+    - Completion choices
+    - Finish reasons
+    - Response metadata
+  </Card>
+
+  <Card title="Metadata" icon="tags">
+    - Provider information
+    - Model details
+    - Request configuration
+    - LiteLLM-specific metadata
+  </Card>
+
+  <Card title="Usage" icon="chart-line">
+    - Prompt tokens
+    - Completion tokens
+    - Total tokens
+    - Provider-specific usage
+  </Card>
+</CardGroup>
+
+## Advanced Features
+
+### Fallback Handling
+
+LiteLLM supports fallback models - all attempts are tracked:
+
+```python
+import litellm
+from opik import flush_tracker
+from opik.integrations.litellm import track_completion
+
+tracked_completion = track_completion()(litellm.completion)
+
+response = tracked_completion(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello"}],
+    fallbacks=["gpt-3.5-turbo", "claude-3-haiku-20240307"]
+)
+
+flush_tracker()
+```
+
+### Custom Headers and Parameters
+
+```python
+response = tracked_completion(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "Hello"}],
+    temperature=0.7,
+    max_tokens=100,
+    top_p=0.9,
+    extra_headers={"X-Custom-Header": "value"}
+)
+```
+
+### Caching with LiteLLM
+
+```python
+import litellm
+from litellm import completion_with_cache
+from opik.integrations.litellm import track_completion
+
+# Enable LiteLLM caching
+litellm.cache = litellm.Cache()
+
+# Track the cached completion function
+tracked_cached_completion = track_completion()(completion_with_cache)
+
+# First call - hits the API
+response1 = tracked_cached_completion(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "What is 2+2?"}]
+)
+
+# Second call - served from cache (still tracked)
+response2 = tracked_cached_completion(
+    model="gpt-3.5-turbo",
+    messages=[{"role": "user", "content": "What is 2+2?"}]
+)
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Wrap once, use everywhere">
+    Create wrapped functions at module level:
+
+    ```python
+    from opik.integrations.litellm import track_completion
+    import litellm
+
+    tracked_completion = track_completion()(litellm.completion)
+    tracked_acompletion = track_completion()(litellm.acompletion)
+    
+    # Use throughout your code
+    ```
+  </Step>
+
+  <Step title="Always flush at the end">
+    Call `opik.flush_tracker()` to ensure all traces are sent:
+
+    ```python
+    from opik import flush_tracker
+
+    # Your code here...
+    
+    flush_tracker()
+    ```
+  </Step>
+
+  <Step title="Use meaningful project names">
+    Organize traces by use case:
+
+    ```python
+    tracked_completion = track_completion(project_name="content-generation")
+    ```
+  </Step>
+</Steps>
+
+## Troubleshooting
+
+### Traces not appearing
+
+Make sure to:
+1. Call `opik.configure()` before using tracked functions
+2. Call `opik.flush_tracker()` at the end of your script
+3. Verify the decorator is applied correctly
+
+### Streaming not tracked properly
+
+Ensure you consume the entire stream:
+
+```python
+# Good - stream is fully consumed
+for chunk in response:
+    process(chunk)
+
+# Bad - stream may not be fully consumed
+first_chunk = next(response)
+```
+
+### Provider errors
+
+Make sure you have the required API keys set:
+
+```bash
+export OPENAI_API_KEY="..."
+export ANTHROPIC_API_KEY="..."
+# etc.
+```
+
+## Reference
+
+### `track_completion()`
+
+```python
+def track_completion(
+    project_name: Optional[str] = None,
+) -> Callable:
+    """
+    Decorator for tracking LiteLLM function calls with Opik.
+    
+    Supports:
+    - litellm.completion
+    - litellm.acompletion
+    - Streaming and non-streaming modes
+    
+    Args:
+        project_name: Optional project name for organizing traces
+    
+    Returns:
+        Decorator function that wraps the completion function
+    """
+```
+
+## Use Cases
+
+### When to use LiteLLM integration:
+
+1. **Multi-provider applications** - Switching between different LLM providers
+2. **Fallback scenarios** - Automatic failover to backup providers
+3. **Cost optimization** - Route to cheaper models based on task complexity
+4. **Provider comparison** - Test the same prompt across multiple providers
+5. **Internal integrations** - Building on top of LiteLLM's unified interface
+
+### When to use provider-specific integrations:
+
+1. **Single provider** - If you only use OpenAI, Anthropic, etc.
+2. **Provider-specific features** - Advanced features not exposed through LiteLLM
+3. **Direct control** - When you need fine-grained control over API calls
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="OpenAI Integration" href="/integrations/openai" icon="robot">
+    Direct OpenAI integration
+  </Card>
+
+  <Card title="Anthropic Integration" href="/integrations/anthropic" icon="message">
+    Direct Anthropic integration
+  </Card>
+
+  <Card title="Evaluation" href="/evaluation/overview" icon="chart-bar">
+    Evaluate model outputs
+  </Card>
+
+  <Card title="Other Integrations" href="/integrations" icon="plug">
+    Explore more integrations
+  </Card>
+</CardGroup>

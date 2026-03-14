@@ -1,0 +1,552 @@
+---
+title: Tracing
+description: Trace LLM applications with the Opik TypeScript SDK
+---
+
+Tracing helps you understand and debug your LLM application by capturing the flow of execution, inputs, outputs, and metadata. The Opik TypeScript SDK offers two approaches to tracing:
+
+1. **Automatic tracing** with the `@track` decorator
+2. **Manual tracing** with the Opik client
+
+## Automatic Tracing with @track
+
+The `@track` decorator automatically creates traces and spans for your functions and methods.
+
+### Basic Usage
+
+```typescript
+import { track, flushAll } from "opik";
+
+class ChatBot {
+  @track({ type: "llm" })
+  async generateResponse(prompt: string) {
+    // Your LLM call here
+    return "AI response";
+  }
+
+  @track({ name: "process-message" })
+  async processMessage(message: string) {
+    const response = await this.generateResponse(message);
+    return response;
+  }
+}
+
+const bot = new ChatBot();
+await bot.processMessage("Hello!");
+await flushAll();
+```
+
+### Decorator Options
+
+<ParamField path="name" type="string">
+  Custom name for the span (defaults to function name).
+</ParamField>
+
+<ParamField path="projectName" type="string">
+  Override the default project name.
+</ParamField>
+
+<ParamField path="type" type="SpanType">
+  Span type: `"llm"`, `"tool"`, `"general"`, etc.
+</ParamField>
+
+<ParamField path="enrichSpan" type="(result: any) => Record<string, unknown>">
+  Function to extract additional data from the result to add to the span.
+</ParamField>
+
+### Nested Spans
+
+The `@track` decorator automatically creates nested spans when tracked functions call each other:
+
+```typescript
+import { track, flushAll } from "opik";
+
+class Agent {
+  @track({ type: "tool" })
+  async searchDatabase(query: string) {
+    // Database search
+    return ["result1", "result2"];
+  }
+
+  @track({ type: "llm" })
+  async generateAnswer(context: string[], question: string) {
+    // LLM call
+    return "The answer is...";
+  }
+
+  @track({ name: "agent-flow" })
+  async answerQuestion(question: string) {
+    const context = await this.searchDatabase(question);
+    const answer = await this.generateAnswer(context, question);
+    return answer;
+  }
+}
+
+const agent = new Agent();
+await agent.answerQuestion("What is the capital of France?");
+await flushAll();
+```
+
+This creates a trace hierarchy:
+```
+agent-flow
+├── searchDatabase
+└── generateAnswer
+```
+
+### Enriching Spans
+
+Use the `enrichSpan` option to extract additional data from function results:
+
+```typescript
+import { track } from "opik";
+
+interface LLMResponse {
+  text: string;
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+  };
+  model: string;
+}
+
+class LLMService {
+  @track({
+    type: "llm",
+    enrichSpan: (result: LLMResponse) => ({
+      usage: result.usage,
+      model: result.model,
+      metadata: {
+        totalCost: calculateCost(result.usage, result.model),
+      },
+    }),
+  })
+  async callLLM(prompt: string): Promise<LLMResponse> {
+    // Call your LLM
+    return {
+      text: "Response",
+      usage: { promptTokens: 10, completionTokens: 20, totalTokens: 30 },
+      model: "gpt-4",
+    };
+  }
+}
+```
+
+### Function Wrapper Style
+
+You can also use `track` as a function wrapper:
+
+```typescript
+import { track } from "opik";
+
+const trackedFunction = track(
+  { name: "my-function", type: "llm" },
+  async (input: string) => {
+    // Your logic here
+    return "output";
+  }
+);
+
+await trackedFunction("input");
+```
+
+### TypeScript Configuration
+
+To use decorators, ensure your `tsconfig.json` includes:
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
+```
+
+## Manual Tracing
+
+For more control, use the Opik client directly to create traces and spans.
+
+### Creating Traces
+
+```typescript
+import { Opik } from "opik";
+
+const client = new Opik();
+
+const trace = client.trace({
+  name: "user-request",
+  input: { message: "What is the weather?" },
+  metadata: { userId: "user-123" },
+  tags: ["production"],
+});
+
+// Perform work...
+
+trace.update({
+  output: { response: "The weather is sunny." },
+});
+
+trace.end();
+
+await client.flush();
+```
+
+### Creating Spans
+
+Spans represent individual operations within a trace:
+
+```typescript
+const trace = client.trace({
+  name: "chatbot-request",
+  input: { message: "Hello!" },
+});
+
+// Create a span for LLM call
+const llmSpan = trace.span({
+  name: "llm-generation",
+  type: "llm",
+  input: { prompt: "Generate a response..." },
+});
+
+// Simulate LLM call
+const response = await callLLM();
+
+llmSpan.update({
+  output: { text: response },
+  usage: { promptTokens: 10, completionTokens: 20 },
+  model: "gpt-4",
+});
+
+llmSpan.end();
+
+// Update trace with final output
+trace.update({ output: { response } });
+trace.end();
+
+await client.flush();
+```
+
+### Nested Spans
+
+Create child spans for hierarchical operations:
+
+```typescript
+const trace = client.trace({ name: "main-flow" });
+
+const parentSpan = trace.span({
+  name: "retrieval",
+  type: "tool",
+});
+
+// Create a child span
+const childSpan = parentSpan.span({
+  name: "database-query",
+  type: "tool",
+});
+
+childSpan.update({ output: { results: [...] } });
+childSpan.end();
+
+parentSpan.end();
+trace.end();
+```
+
+## Trace and Span Properties
+
+### Trace Properties
+
+<ParamField path="name" type="string" required>
+  Human-readable name for the trace.
+</ParamField>
+
+<ParamField path="input" type="Record<string, unknown>">
+  Input data (e.g., user query, parameters).
+</ParamField>
+
+<ParamField path="output" type="Record<string, unknown>">
+  Output data (e.g., final response).
+</ParamField>
+
+<ParamField path="metadata" type="Record<string, unknown>">
+  Additional metadata (e.g., user ID, session ID).
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Tags for categorization (e.g., "production", "experiment").
+</ParamField>
+
+<ParamField path="projectName" type="string">
+  Override the default project name.
+</ParamField>
+
+<ParamField path="startTime" type="Date">
+  Trace start time (auto-set if not provided).
+</ParamField>
+
+<ParamField path="endTime" type="Date">
+  Trace end time (call `trace.end()` to set automatically).
+</ParamField>
+
+### Span Properties
+
+<ParamField path="name" type="string" required>
+  Human-readable name for the span.
+</ParamField>
+
+<ParamField path="type" type="SpanType">
+  Type of operation: `"llm"`, `"tool"`, `"general"`, etc.
+</ParamField>
+
+<ParamField path="input" type="Record<string, unknown>">
+  Input to the operation.
+</ParamField>
+
+<ParamField path="output" type="Record<string, unknown>">
+  Output from the operation.
+</ParamField>
+
+<ParamField path="metadata" type="Record<string, unknown>">
+  Additional metadata.
+</ParamField>
+
+<ParamField path="tags" type="string[]">
+  Tags for the span.
+</ParamField>
+
+<ParamField path="model" type="string">
+  Model name (for LLM spans).
+</ParamField>
+
+<ParamField path="provider" type="string">
+  Provider name (e.g., "openai", "anthropic").
+</ParamField>
+
+<ParamField path="usage" type="Usage">
+  Token usage information:
+  ```typescript
+  {
+    promptTokens?: number;
+    completionTokens?: number;
+    totalTokens?: number;
+  }
+  ```
+</ParamField>
+
+## Adding Feedback Scores
+
+Add feedback scores to traces or spans:
+
+```typescript
+const trace = client.trace({ name: "user-request" });
+
+// Add a score to the trace
+trace.score({
+  name: "user_satisfaction",
+  value: 0.9,
+  reason: "User clicked thumbs up",
+});
+
+trace.end();
+```
+
+For spans:
+
+```typescript
+const span = trace.span({ name: "llm-call", type: "llm" });
+
+span.score({
+  name: "answer_relevance",
+  value: 0.85,
+  categoryName: "quality",
+});
+
+span.end();
+```
+
+## Updating Traces and Spans
+
+You can update trace and span properties after creation:
+
+```typescript
+const trace = client.trace({
+  name: "process-request",
+  input: { query: "..." },
+});
+
+// Do some work...
+
+// Update with output
+trace.update({
+  output: { result: "..." },
+  metadata: { processingTime: 123 },
+});
+
+// End the trace
+trace.end();
+```
+
+## Error Handling
+
+The `@track` decorator automatically captures errors:
+
+```typescript
+class Service {
+  @track({ type: "tool" })
+  async riskyOperation() {
+    throw new Error("Something went wrong");
+  }
+}
+
+try {
+  await service.riskyOperation();
+} catch (error) {
+  // Error is automatically logged to the span
+}
+```
+
+For manual tracing, update the span with error information:
+
+```typescript
+const span = trace.span({ name: "operation" });
+
+try {
+  // Do work
+} catch (error) {
+  span.update({
+    errorInfo: {
+      message: error.message,
+      exceptionType: error.name,
+      traceback: error.stack,
+    },
+  });
+  span.end();
+  throw error;
+}
+```
+
+## Best Practices
+
+<Steps>
+  <Step title="Use meaningful names">
+    Give traces and spans descriptive names that indicate what they're doing:
+
+    ```typescript
+    // ✅ Good
+    @track({ name: "generate-product-description" })
+
+    // ❌ Bad
+    @track({ name: "func1" })
+    ```
+  </Step>
+
+  <Step title="Set appropriate span types">
+    Use the correct span type to help with filtering and analysis:
+
+    ```typescript
+    @track({ type: "llm" })      // For LLM calls
+    @track({ type: "tool" })     // For tool invocations
+    @track({ type: "general" })  // For other operations
+    ```
+  </Step>
+
+  <Step title="Add relevant metadata">
+    Include metadata that will help with debugging and analysis:
+
+    ```typescript
+    trace.update({
+      metadata: {
+        userId: "user-123",
+        sessionId: "sess-456",
+        model: "gpt-4",
+        temperature: 0.7,
+      },
+    });
+    ```
+  </Step>
+
+  <Step title="Always flush before exit">
+    Ensure all traces are sent before your application terminates:
+
+    ```typescript
+    // At the end of your script or request handler
+    await client.flush();
+
+    // Or flush all clients
+    await flushAll();
+    ```
+  </Step>
+
+  <Step title="Use tags for categorization">
+    Add tags to make it easier to filter and search traces:
+
+    ```typescript
+    client.trace({
+      name: "request",
+      tags: ["production", "critical", "user-facing"],
+    });
+    ```
+  </Step>
+</Steps>
+
+## Complete Example
+
+Here's a complete example combining automatic and manual tracing:
+
+```typescript
+import { Opik, track, flushAll } from "opik";
+
+const client = new Opik();
+
+class RAGSystem {
+  @track({ type: "tool" })
+  async retrieveDocuments(query: string) {
+    // Simulate document retrieval
+    return [
+      { id: 1, text: "Document 1" },
+      { id: 2, text: "Document 2" },
+    ];
+  }
+
+  @track({
+    type: "llm",
+    enrichSpan: (result) => ({
+      model: result.model,
+      usage: result.usage,
+    }),
+  })
+  async generateAnswer(context: any[], question: string) {
+    // Simulate LLM call
+    return {
+      text: "The answer is...",
+      model: "gpt-4",
+      usage: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+    };
+  }
+
+  @track({ name: "rag-pipeline" })
+  async answer(question: string) {
+    const documents = await this.retrieveDocuments(question);
+    const response = await this.generateAnswer(documents, question);
+    return response.text;
+  }
+}
+
+const rag = new RAGSystem();
+const answer = await rag.answer("What is Opik?");
+
+console.log("Answer:", answer);
+await flushAll();
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Client API" icon="code" href="/sdk/typescript/client">
+    Explore the full client API
+  </Card>
+  <Card title="Evaluation" icon="chart-line" href="/sdk/typescript/evaluation">
+    Learn how to evaluate your traces
+  </Card>
+</CardGroup>

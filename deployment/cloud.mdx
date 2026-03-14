@@ -1,0 +1,251 @@
+---
+title: "Comet Cloud Deployment"
+description: "Get started with Opik on Comet Cloud in minutes"
+---
+
+## Overview
+
+Comet Cloud provides a fully managed Opik instance with zero infrastructure setup. This is the fastest way to start using Opik for your LLM observability and evaluation needs.
+
+## Benefits
+
+<CardGroup cols={2}>
+  <Card title="Zero Setup" icon="bolt">
+    Start using Opik immediately without installing or configuring any infrastructure.
+  </Card>
+  <Card title="Automatic Updates" icon="arrows-rotate">
+    Always use the latest features and security patches without manual intervention.
+  </Card>
+  <Card title="High Availability" icon="shield-check">
+    Built-in redundancy and failover for production reliability.
+  </Card>
+  <Card title="Scalability" icon="chart-line">
+    Automatically scales to handle your trace volume, from development to production.
+  </Card>
+  <Card title="Enterprise Support" icon="headset">
+    Access to Comet's support team for troubleshooting and guidance.
+  </Card>
+  <Card title="Free Tier" icon="gift">
+    Start free and upgrade as your needs grow.
+  </Card>
+</CardGroup>
+
+## Getting Started
+
+<Steps>
+  <Step title="Create Your Account">
+    Sign up for a free Comet account:
+
+    1. Visit [comet.com/signup](https://www.comet.com/signup?from=llm&utm_source=opik&utm_medium=docs)
+    2. Complete the registration form
+    3. Verify your email address
+    4. Access your Opik workspace
+
+    Your workspace will be created automatically and ready to use.
+  </Step>
+
+  <Step title="Get Your API Key">
+    Retrieve your API credentials from the Comet dashboard:
+
+    1. Navigate to **Settings** > **API Keys**
+    2. Click **Generate New API Key**
+    3. Copy your API key (keep it secure!)
+    4. Note your workspace name
+
+    <Warning>
+      Keep your API key secure and never commit it to version control. Use environment variables or secrets management.
+    </Warning>
+  </Step>
+
+  <Step title="Configure the SDK">
+    Configure your Opik SDK to connect to Comet Cloud.
+
+    <Tabs>
+      <Tab title="Python">
+        **Interactive Configuration:**
+        ```bash
+        opik configure
+        ```
+        Follow the prompts to enter your API key and workspace.
+
+        **Programmatic Configuration:**
+        ```python
+        import opik
+
+        opik.configure(
+            api_key="your-api-key",
+            workspace="your-workspace-name"
+        )
+        ```
+
+        **Environment Variables:**
+        ```bash
+        export OPIK_API_KEY="your-api-key"
+        export OPIK_WORKSPACE="your-workspace-name"
+        export OPIK_URL_OVERRIDE="https://www.comet.com/opik/api"
+        ```
+      </Tab>
+
+      <Tab title="TypeScript">
+        **Constructor Configuration:**
+        ```typescript
+        import { Opik } from 'opik';
+
+        const opik = new Opik({
+          apiKey: 'your-api-key',
+          workspace: 'your-workspace-name',
+          baseUrl: 'https://www.comet.com/opik/api'
+        });
+        ```
+
+        **Environment Variables:**
+        ```bash
+        export OPIK_API_KEY="your-api-key"
+        export OPIK_WORKSPACE="your-workspace-name"
+        export OPIK_URL_OVERRIDE="https://www.comet.com/opik/api"
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Verify Connection">
+    Test your connection to Comet Cloud:
+
+    <Tabs>
+      <Tab title="Python">
+        ```python
+        import opik
+
+        client = opik.Opik()
+
+        # This will raise an exception if authentication fails
+        client.auth_check()
+
+        print("✓ Successfully connected to Comet Cloud")
+        ```
+      </Tab>
+
+      <Tab title="TypeScript">
+        ```typescript
+        import { Opik } from 'opik';
+
+        const client = new Opik();
+
+        // Create a test trace to verify connection
+        const trace = client.trace({
+          name: 'connection-test',
+          input: { test: true },
+          output: { success: true }
+        });
+
+        await client.flush();
+        console.log('✓ Successfully connected to Comet Cloud');
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Start Logging Traces">
+    You're ready to start using Opik! Log your first trace:
+
+    ```python
+    import opik
+
+    @opik.track
+    def my_llm_function(user_question: str) -> str:
+        # Your LLM code here
+        return "Hello from Opik on Comet Cloud!"
+
+    result = my_llm_function("What is Opik?")
+    ```
+
+    View your traces in the Opik dashboard at [comet.com](https://www.comet.com).
+  </Step>
+</Steps>
+
+## Features Available on Comet Cloud
+
+<Accordion title="All Opik features are available on Comet Cloud">
+  - **Tracing**: Full support for traces, spans, and nested tracking
+  - **Integrations**: All 50+ integrations work seamlessly
+  - **Evaluation**: Datasets, experiments, and LLM-as-a-judge metrics
+  - **Monitoring**: Production dashboards and online evaluation
+  - **Prompt Management**: Version control for prompts
+  - **Agent Optimizer**: Automatic prompt and tool optimization
+  - **Guardrails**: PII detection and content moderation
+  - **API Access**: Full REST API access
+</Accordion>
+
+## Pricing
+
+Comet Cloud offers flexible pricing tiers:
+
+- **Free Tier**: Perfect for getting started and small projects
+- **Team Plans**: For growing teams with higher volume needs
+- **Enterprise**: Custom pricing for large-scale deployments
+
+Visit [comet.com/pricing](https://www.comet.com/pricing) for current pricing details.
+
+## Security & Compliance
+
+<CardGroup cols={2}>
+  <Card title="Data Encryption" icon="lock">
+    All data is encrypted in transit (TLS) and at rest.
+  </Card>
+  <Card title="Access Control" icon="user-shield">
+    Role-based access control for team management.
+  </Card>
+  <Card title="SOC 2 Compliance" icon="certificate">
+    Comet is SOC 2 Type II certified.
+  </Card>
+  <Card title="Data Residency" icon="globe">
+    Enterprise plans support custom data residency requirements.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Authentication errors">
+    If you see authentication errors:
+
+    1. Verify your API key is correct
+    2. Check that your workspace name matches exactly
+    3. Ensure `OPIK_URL_OVERRIDE` is set to `https://www.comet.com/opik/api`
+    4. Try regenerating your API key in the Comet dashboard
+  </Accordion>
+
+  <Accordion title="Traces not appearing">
+    If traces aren't showing up:
+
+    1. Call `opik.flush_tracker()` to ensure all data is sent
+    2. Check for network connectivity issues
+    3. Verify your configuration is correct
+    4. Look for error messages in your application logs
+  </Accordion>
+
+  <Accordion title="Rate limiting">
+    If you hit rate limits:
+
+    1. Consider upgrading to a higher tier
+    2. Implement batching for high-volume scenarios
+    3. Contact Comet support for custom limits
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/introduction">
+    Complete quickstart tutorial with examples
+  </Card>
+  <Card title="Python SDK" icon="python" href="/sdk/python/overview">
+    Explore the full Python SDK capabilities
+  </Card>
+  <Card title="Integrations" icon="plug" href="/integrations/overview">
+    Connect with your LLM framework
+  </Card>
+  <Card title="Dashboard" icon="chart-line" href="https://www.comet.com">
+    Access your Opik dashboard
+  </Card>
+</CardGroup>

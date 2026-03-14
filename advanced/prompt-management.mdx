@@ -1,0 +1,632 @@
+---
+title: "Prompt Management"
+description: "Manage, version, and organize prompts effectively with the Opik SDK"
+---
+
+Opik provides comprehensive prompt management capabilities, allowing you to store, version, and retrieve prompts programmatically. This enables collaboration, reproducibility, and seamless integration with your LLM applications.
+
+## Overview
+
+Prompt management in Opik includes:
+
+- **Version Control**: Every prompt change creates a new version with a unique commit hash
+- **Dual Structure Support**: Text prompts and chat prompts with different APIs
+- **Metadata & Tagging**: Organize prompts with custom metadata and tags
+- **Change Tracking**: Document changes with descriptions for each version
+- **SDK Integration**: Retrieve and use prompts directly in your code
+
+## Creating Prompts
+
+### Text Prompts
+
+Text prompts use simple string templates:
+
+```python
+from opik.api_objects.prompt import Prompt
+
+# Create a text prompt with Mustache templating
+prompt = Prompt(
+    name="greeting-prompt",
+    prompt="Hello {{name}}! Welcome to {{location}}.",
+    description="A friendly greeting prompt",
+    tags=["greetings", "onboarding"]
+)
+
+print(f"Commit: {prompt.commit}")
+print(f"Version ID: {prompt.version_id}")
+```
+
+<CodeGroup>
+```python Mustache (Default)
+from opik.api_objects.prompt import Prompt, PromptType
+
+prompt = Prompt(
+    name="mustache-example",
+    prompt="User {{user_id}} from {{country}}",
+    type=PromptType.MUSTACHE
+)
+
+formatted = prompt.format(
+    user_id="12345",
+    country="USA"
+)
+print(formatted)  # "User 12345 from USA"
+```
+
+```python Jinja2
+from opik.api_objects.prompt import Prompt, PromptType
+
+prompt = Prompt(
+    name="jinja2-example",
+    prompt="""Hello {{ name }}!
+{% if premium %}
+You have premium access.
+{% else %}
+Upgrade to premium today.
+{% endif %}""",
+    type=PromptType.JINJA2
+)
+
+formatted = prompt.format(
+    name="Alice",
+    premium=True
+)
+```
+</CodeGroup>
+
+### Chat Prompts
+
+Chat prompts use message-based structure:
+
+```python
+from opik.api_objects.prompt import ChatPrompt
+
+chat_prompt = ChatPrompt(
+    name="customer-support",
+    messages=[
+        {
+            "role": "system",
+            "content": "You are a helpful customer support agent for {{company_name}}."
+        },
+        {
+            "role": "user",
+            "content": "{{customer_question}}"
+        }
+    ],
+    description="Customer support chat template",
+    tags=["support", "chat"]
+)
+
+# Format the prompt
+messages = chat_prompt.format(
+    variables={
+        "company_name": "Acme Corp",
+        "customer_question": "How do I reset my password?"
+    }
+)
+
+# Use with LLM
+import litellm
+response = litellm.completion(
+    model="gpt-4",
+    messages=messages
+)
+```
+
+## Retrieving Prompts
+
+### Get Latest Version
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get latest text prompt
+prompt = client.get_prompt(name="greeting-prompt")
+if prompt:
+    print(f"Latest version: {prompt.commit}")
+    print(f"Template: {prompt.prompt}")
+
+# Get latest chat prompt
+chat_prompt = client.get_chat_prompt(name="customer-support")
+if chat_prompt:
+    print(f"Messages: {chat_prompt.template}")
+```
+
+### Get Specific Version
+
+```python
+# Retrieve by commit hash
+prompt = client.get_prompt(
+    name="greeting-prompt",
+    commit="abc123def456"
+)
+
+chat_prompt = client.get_chat_prompt(
+    name="customer-support",
+    commit="xyz789abc012"
+)
+```
+
+<Warning>
+`get_prompt()` only returns text prompts, and `get_chat_prompt()` only returns chat prompts. Using the wrong method will raise a `PromptTemplateStructureMismatch` error.
+</Warning>
+
+## Prompt Versioning
+
+### Understanding Versions
+
+Every time you create or update a prompt, a new version is generated:
+
+```python
+from opik.api_objects.prompt import Prompt
+
+# First version
+prompt_v1 = Prompt(
+    name="my-prompt",
+    prompt="Hello {{name}}!",
+    change_description="Initial version"
+)
+print(f"V1 commit: {prompt_v1.commit}")
+
+# Update creates second version
+prompt_v2 = Prompt(
+    name="my-prompt",
+    prompt="Hello {{name}}! How are you?",
+    change_description="Added friendly question"
+)
+print(f"V2 commit: {prompt_v2.commit}")
+
+# Unchanged template reuses existing version
+prompt_v2_again = Prompt(
+    name="my-prompt",
+    prompt="Hello {{name}}! How are you?"
+)
+print(f"Same commit: {prompt_v2_again.commit == prompt_v2.commit}")  # True
+```
+
+### Version History
+
+Retrieve all versions of a prompt:
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get all versions
+history = client.get_prompt_history(name="my-prompt")
+
+for version in history:
+    print(f"\nCommit: {version.commit}")
+    print(f"Created: {version.created_at}")
+    print(f"Template: {version.prompt}")
+    print(f"Change: {version.change_description}")
+    print(f"Tags: {version.tags}")
+```
+
+### Filtering History
+
+```python
+# Search by text
+history = client.get_prompt_history(
+    name="my-prompt",
+    search="friendly"
+)
+
+# Filter with Opik Query Language (OQL)
+history = client.get_prompt_history(
+    name="my-prompt",
+    filter_string="created_by = 'alice@example.com'"
+)
+
+# Complex filters
+history = client.get_prompt_history(
+    name="my-prompt",
+    filter_string="metadata.environment = 'production' AND tags CONTAINS 'approved'"
+)
+```
+
+## Prompt Properties
+
+### Core Properties
+
+<ParamField path="name" type="string" required>
+  Unique identifier for the prompt
+</ParamField>
+
+<ParamField path="prompt" type="string" required>
+  Template content (for text prompts)
+</ParamField>
+
+<ParamField path="messages" type="array" required>
+  List of message objects with role and content (for chat prompts)
+</ParamField>
+
+<ParamField path="commit" type="string">
+  Unique hash identifying this version (auto-generated)
+</ParamField>
+
+<ParamField path="version_id" type="string">
+  UUID for the version (auto-generated)
+</ParamField>
+
+### Optional Properties
+
+<ParamField path="type" type="PromptType" default="MUSTACHE">
+  Template engine: `PromptType.MUSTACHE` or `PromptType.JINJA2`
+</ParamField>
+
+<ParamField path="metadata" type="dict">
+  Custom metadata dictionary for the prompt
+</ParamField>
+
+<ParamField path="description" type="string">
+  Description of the prompt (up to 255 characters)
+</ParamField>
+
+<ParamField path="change_description" type="string">
+  Description of changes in this version
+</ParamField>
+
+<ParamField path="tags" type="list">
+  List of tags for categorization
+</ParamField>
+
+<ParamField path="id" type="string">
+  Optional UUID for the prompt container
+</ParamField>
+
+## Advanced Usage
+
+### Metadata and Organization
+
+```python
+from opik.api_objects.prompt import Prompt
+
+prompt = Prompt(
+    name="production-prompt",
+    prompt="Process {{input}}",
+    metadata={
+        "environment": "production",
+        "owner": "data-team",
+        "version": "2.1.0",
+        "approved_by": "alice@example.com"
+    },
+    tags=["production", "v2", "approved"],
+    description="Production data processing prompt",
+    change_description="Optimized for better accuracy"
+)
+
+# Access properties
+print(f"Environment: {prompt.metadata['environment']}")
+print(f"Tags: {prompt.tags}")
+```
+
+### Template Structure Immutability
+
+Once created, a prompt's structure (text vs chat) cannot be changed:
+
+```python
+from opik.api_objects.prompt import Prompt, ChatPrompt
+import opik.exceptions
+
+# Create text prompt
+text_prompt = Prompt(
+    name="my-prompt",
+    prompt="Hello {{name}}"
+)
+
+try:
+    # This will raise PromptTemplateStructureMismatch
+    chat_prompt = ChatPrompt(
+        name="my-prompt",  # Same name
+        messages=[{"role": "user", "content": "Hello"}]
+    )
+except opik.exceptions.PromptTemplateStructureMismatch as e:
+    print(f"Error: {e}")
+    # Error: Cannot create chat prompt 'my-prompt' because a text prompt with the same name already exists
+```
+
+### Multimodal Chat Prompts
+
+Support for images, audio, and video in chat prompts:
+
+```python
+from opik.api_objects.prompt import ChatPrompt
+
+# Create multimodal prompt
+vision_prompt = ChatPrompt(
+    name="image-analyzer",
+    messages=[
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "Analyze this image: {{description_request}}"
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": "{{image_url}}"}
+                }
+            ]
+        }
+    ]
+)
+
+# Format with modality support
+formatted = vision_prompt.format(
+    variables={
+        "description_request": "What objects are visible?",
+        "image_url": "https://example.com/image.jpg"
+    },
+    supported_modalities={"vision": True, "video": False}
+)
+```
+
+<Info>
+When a modality is not supported, content parts are replaced with placeholders like `<<<image>>>` or `<<<video>>>`.
+</Info>
+
+## Integration Patterns
+
+### With LLM Libraries
+
+<Tabs>
+  <Tab title="OpenAI">
+    ```python
+    import opik
+    import openai
+    
+    client = opik.Opik()
+    prompt = client.get_chat_prompt(name="my-chat-prompt")
+    
+    messages = prompt.format(
+        variables={"query": "What is AI?"}
+    )
+    
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=messages
+    )
+    print(response.choices[0].message.content)
+    ```
+  </Tab>
+  
+  <Tab title="LiteLLM">
+    ```python
+    import opik
+    import litellm
+    
+    client = opik.Opik()
+    prompt = client.get_chat_prompt(name="my-chat-prompt")
+    
+    messages = prompt.format(
+        variables={"query": "What is AI?"}
+    )
+    
+    response = litellm.completion(
+        model="gpt-4",
+        messages=messages
+    )
+    print(response.choices[0].message.content)
+    ```
+  </Tab>
+  
+  <Tab title="Anthropic">
+    ```python
+    import opik
+    import anthropic
+    
+    client = opik.Opik()
+    prompt = client.get_chat_prompt(name="my-chat-prompt")
+    
+    messages = prompt.format(
+        variables={"query": "What is AI?"}
+    )
+    
+    # Anthropic requires system message separate
+    system_msg = next(m for m in messages if m["role"] == "system")
+    user_messages = [m for m in messages if m["role"] != "system"]
+    
+    anthropic_client = anthropic.Anthropic()
+    response = anthropic_client.messages.create(
+        model="claude-3-opus-20240229",
+        system=system_msg["content"],
+        messages=user_messages,
+        max_tokens=1024
+    )
+    print(response.content[0].text)
+    ```
+  </Tab>
+</Tabs>
+
+### With Opik Tracing
+
+```python
+import opik
+from opik.integrations.openai import track_openai
+import openai
+
+# Initialize Opik client
+client = opik.Opik()
+openai_client = track_openai(openai.OpenAI())
+
+@opik.track()
+def chat_with_prompt(user_query: str):
+    # Get prompt from library
+    prompt = client.get_chat_prompt(name="support-agent")
+    
+    # Log prompt details
+    opik.opik_context.update_current_span(
+        metadata={
+            "prompt_name": prompt.name,
+            "prompt_commit": prompt.commit,
+            "prompt_version_id": prompt.version_id
+        }
+    )
+    
+    # Format and use
+    messages = prompt.format(variables={"query": user_query})
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=messages
+    )
+    
+    return response.choices[0].message.content
+
+result = chat_with_prompt("How do I reset my password?")
+print(result)
+```
+
+### With Evaluations
+
+```python
+from opik.evaluation import evaluate_prompt
+import opik
+
+# Get dataset
+client = opik.Opik()
+dataset = client.get_or_create_dataset("customer-queries")
+
+# Get chat prompt
+prompt = client.get_chat_prompt(name="support-agent")
+
+# Evaluate
+evaluate_prompt(
+    dataset=dataset,
+    messages=prompt.template,  # Use template directly
+    model="gpt-4",
+    experiment_name=f"eval-{prompt.commit[:8]}"
+)
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Use Descriptive Names" icon="tag">
+    Choose clear, descriptive names that indicate the prompt's purpose
+  </Card>
+  
+  <Card title="Document Changes" icon="book">
+    Always add `change_description` when updating prompts
+  </Card>
+  
+  <Card title="Version in Production" icon="lock">
+    Pin production code to specific commit hashes, not latest versions
+  </Card>
+  
+  <Card title="Organize with Tags" icon="bookmark">
+    Use tags and metadata for easy filtering and organization
+  </Card>
+  
+  <Card title="Validate Templates" icon="check">
+    Set `validate_placeholders=True` to catch template errors early
+  </Card>
+  
+  <Card title="Separate Environments" icon="layer-group">
+    Use metadata to track environment (dev, staging, production)
+  </Card>
+</CardGroup>
+
+## Common Patterns
+
+### Prompt Rollback
+
+```python
+import opik
+
+client = opik.Opik()
+
+# Get current production prompt
+current = client.get_prompt(name="my-prompt")
+print(f"Current commit: {current.commit}")
+
+# Rollback to previous version
+history = client.get_prompt_history(name="my-prompt")
+previous_commit = history[1].commit  # Second most recent
+
+# Use previous version
+previous = client.get_prompt(
+    name="my-prompt",
+    commit=previous_commit
+)
+print(f"Rolled back to: {previous.commit}")
+```
+
+### A/B Testing
+
+```python
+import opik
+import random
+
+client = opik.Opik()
+
+def get_ab_prompt(name: str, variant: str = None):
+    if variant is None:
+        variant = random.choice(["a", "b"])
+    
+    # Get prompt with variant tag
+    history = client.get_prompt_history(
+        name=name,
+        filter_string=f"tags CONTAINS 'variant-{variant}'"
+    )
+    
+    if history:
+        return client.get_prompt(
+            name=name,
+            commit=history[0].commit
+        )
+    return client.get_prompt(name=name)
+
+# Use in production
+prompt = get_ab_prompt("customer-greeting")
+formatted = prompt.format(name="Alice")
+```
+
+### Environment-Specific Prompts
+
+```python
+import opik
+import os
+
+client = opik.Opik()
+env = os.getenv("ENVIRONMENT", "development")
+
+# Get environment-specific version
+history = client.get_prompt_history(
+    name="my-prompt",
+    filter_string=f"metadata.environment = '{env}'"
+)
+
+if history:
+    prompt = client.get_prompt(
+        name="my-prompt",
+        commit=history[0].commit
+    )
+else:
+    # Fallback to latest
+    prompt = client.get_prompt(name="my-prompt")
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Prompt Playground" icon="flask" href="/advanced/prompt-playground">
+    Test and iterate on prompts interactively
+  </Card>
+  
+  <Card title="Agent Optimizer" icon="chart-line" href="/advanced/agent-optimizer">
+    Automatically optimize your prompts
+  </Card>
+  
+  <Card title="Evaluate Prompts" icon="clipboard-check" href="/evaluation/overview">
+    Measure prompt performance with metrics
+  </Card>
+  
+  <Card title="Annotation Queues" icon="list-check" href="/advanced/annotation-queues">
+    Collect human feedback on prompt outputs
+  </Card>
+</CardGroup>

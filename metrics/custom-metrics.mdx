@@ -1,0 +1,505 @@
+---
+title: "Custom Metrics"
+description: "Create your own evaluation metrics tailored to your use case"
+---
+
+Opik allows you to create custom metrics by extending the `BaseMetric` class. This gives you complete flexibility to implement domain-specific evaluation logic.
+
+## Creating a Custom Metric
+
+All custom metrics should inherit from `BaseMetric` and implement the `score()` method:
+
+```python
+from opik.evaluation.metrics import BaseMetric, ScoreResult
+from typing import Any
+
+class MyCustomMetric(BaseMetric):
+    def __init__(self, name: str = "my_custom_metric", track: bool = True):
+        super().__init__(name=name, track=track)
+    
+    def score(self, output: str, **kwargs: Any) -> ScoreResult:
+        # Your custom evaluation logic here
+        score_value = self._calculate_score(output)
+        
+        return ScoreResult(
+            value=score_value,
+            name=self.name,
+            reason="Optional explanation for the score"
+        )
+    
+    def _calculate_score(self, output: str) -> float:
+        # Implement your scoring logic
+        return 0.5
+```
+
+## Basic Example: Word Count Metric
+
+Here's a simple metric that scores based on word count:
+
+```python
+from opik.evaluation.metrics import BaseMetric, ScoreResult
+from typing import Any, Optional
+
+class WordCountMetric(BaseMetric):
+    """A metric that checks if output has the expected word count."""
+    
+    def __init__(
+        self,
+        min_words: int = 0,
+        max_words: int = 1000,
+        name: str = "word_count_metric",
+        track: bool = True,
+        project_name: Optional[str] = None,
+    ):
+        super().__init__(name=name, track=track, project_name=project_name)
+        self.min_words = min_words
+        self.max_words = max_words
+    
+    def score(self, output: str, **ignored_kwargs: Any) -> ScoreResult:
+        word_count = len(output.split())
+        
+        if self.min_words <= word_count <= self.max_words:
+            score = 1.0
+            reason = f"Word count {word_count} is within range [{self.min_words}, {self.max_words}]"
+        else:
+            score = 0.0
+            reason = f"Word count {word_count} is outside range [{self.min_words}, {self.max_words}]"
+        
+        return ScoreResult(value=score, name=self.name, reason=reason)
+
+# Usage
+metric = WordCountMetric(min_words=10, max_words=50)
+result = metric.score(output="This is a short response.")
+print(result.value)  # 0.0 (only 5 words)
+print(result.reason)  # "Word count 5 is outside range [10, 50]"
+```
+
+## ScoreResult Structure
+
+The `ScoreResult` class has the following attributes:
+
+```python
+from opik.evaluation.metrics import ScoreResult
+
+result = ScoreResult(
+    name="my_metric",              # Required: metric name
+    value=0.85,                    # Required: numeric score
+    reason="Explanation",          # Optional: reasoning for score
+    category_name="accuracy",      # Optional: category classification
+    metadata={"key": "value"},     # Optional: additional data
+    scoring_failed=False           # Optional: indicates scoring failure
+)
+```
+
+## Advanced Example: Custom LLM-Based Metric
+
+Create a metric that uses your own LLM integration:
+
+```python
+from opik.evaluation.metrics import BaseMetric, ScoreResult
+from typing import Any, Optional
+import openai
+
+class CustomLLMJudge(BaseMetric):
+    """Custom metric using OpenAI to evaluate responses."""
+    
+    def __init__(
+        self,
+        evaluation_prompt: str,
+        model: str = "gpt-4",
+        name: str = "custom_llm_judge",
+        track: bool = True,
+        project_name: Optional[str] = None,
+    ):
+        super().__init__(name=name, track=track, project_name=project_name)
+        self.evaluation_prompt = evaluation_prompt
+        self.model = model
+        self.client = openai.OpenAI()
+    
+    def score(
+        self,
+        input: str,
+        output: str,
+        **ignored_kwargs: Any
+    ) -> ScoreResult:
+        # Build evaluation prompt
+        prompt = f"""{self.evaluation_prompt}
+
+Input: {input}
+Output: {output}
+
+Provide a score from 0 to 1 and explain your reasoning.
+Format: {{"score": <float>, "reason": "<explanation>"}}
+"""
+        
+        # Call LLM
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        # Parse response
+        import json
+        result = json.loads(response.choices[0].message.content)
+        
+        return ScoreResult(
+            value=result["score"],
+            name=self.name,
+            reason=result["reason"]
+        )
+
+# Usage
+metric = CustomLLMJudge(
+    evaluation_prompt="Evaluate if the output is professional and helpful."
+)
+
+result = metric.score(
+    input="How do I reset my password?",
+    output="You can reset your password by clicking 'Forgot Password' on the login page."
+)
+```
+
+## Example: Domain-Specific Validation
+
+Create a metric for validating medical diagnosis outputs:
+
+```python
+from opik.evaluation.metrics import BaseMetric, ScoreResult
+from typing import Any, Optional, List
+import re
+
+class MedicalDiagnosisValidator(BaseMetric):
+    """Validates medical diagnosis outputs."""
+    
+    REQUIRED_SECTIONS = ["symptoms", "diagnosis", "treatment"]
+    
+    def __init__(
+        self,
+        require_icd_code: bool = True,
+        name: str = "medical_diagnosis_validator",
+        track: bool = True,
+        project_name: Optional[str] = None,
+    ):
+        super().__init__(name=name, track=track, project_name=project_name)
+        self.require_icd_code = require_icd_code
+    
+    def score(self, output: str, **ignored_kwargs: Any) -> ScoreResult:
+        issues = []
+        score = 1.0
+        
+        # Check for required sections
+        output_lower = output.lower()
+        for section in self.REQUIRED_SECTIONS:
+            if section not in output_lower:
+                issues.append(f"Missing required section: {section}")
+                score -= 0.3
+        
+        # Check for ICD code if required
+        if self.require_icd_code:
+            icd_pattern = r"[A-Z]\d{2}(\.\d{1,2})?"
+            if not re.search(icd_pattern, output):
+                issues.append("Missing ICD-10 code")
+                score -= 0.2
+        
+        # Ensure score is in valid range
+        score = max(0.0, min(1.0, score))
+        
+        reason = "Valid diagnosis" if not issues else "; ".join(issues)
+        
+        return ScoreResult(
+            value=score,
+            name=self.name,
+            reason=reason,
+            metadata={"issues": issues}
+        )
+
+# Usage
+metric = MedicalDiagnosisValidator(require_icd_code=True)
+
+output = """
+Symptoms: Fever, cough, fatigue
+Diagnosis: Acute bronchitis (J20.9)
+Treatment: Rest, fluids, over-the-counter medication
+"""
+
+result = metric.score(output=output)
+print(result.value)  # 1.0
+print(result.reason)  # "Valid diagnosis"
+```
+
+## Example: Multi-Criteria Scoring
+
+Combine multiple checks into a single metric:
+
+```python
+from opik.evaluation.metrics import BaseMetric, ScoreResult
+from typing import Any, Optional, Dict
+import json
+
+class APIResponseValidator(BaseMetric):
+    """Validates API response format and content."""
+    
+    def __init__(
+        self,
+        required_fields: list,
+        name: str = "api_response_validator",
+        track: bool = True,
+        project_name: Optional[str] = None,
+    ):
+        super().__init__(name=name, track=track, project_name=project_name)
+        self.required_fields = required_fields
+    
+    def score(self, output: str, **ignored_kwargs: Any) -> ScoreResult:
+        scores = {}
+        reasons = []
+        
+        # Check 1: Valid JSON
+        try:
+            data = json.loads(output)
+            scores["valid_json"] = 1.0
+        except json.JSONDecodeError as e:
+            scores["valid_json"] = 0.0
+            reasons.append(f"Invalid JSON: {str(e)}")
+            return ScoreResult(
+                value=0.0,
+                name=self.name,
+                reason="; ".join(reasons),
+                metadata=scores
+            )
+        
+        # Check 2: Required fields present
+        missing_fields = [f for f in self.required_fields if f not in data]
+        if missing_fields:
+            scores["has_required_fields"] = 0.0
+            reasons.append(f"Missing fields: {', '.join(missing_fields)}")
+        else:
+            scores["has_required_fields"] = 1.0
+        
+        # Check 3: No null values in required fields
+        null_fields = [
+            f for f in self.required_fields 
+            if f in data and data[f] is None
+        ]
+        if null_fields:
+            scores["no_null_values"] = 0.0
+            reasons.append(f"Null values in: {', '.join(null_fields)}")
+        else:
+            scores["no_null_values"] = 1.0
+        
+        # Calculate overall score
+        overall_score = sum(scores.values()) / len(scores)
+        
+        reason = "Valid response" if not reasons else "; ".join(reasons)
+        
+        return ScoreResult(
+            value=overall_score,
+            name=self.name,
+            reason=reason,
+            metadata=scores
+        )
+
+# Usage
+metric = APIResponseValidator(required_fields=["status", "data", "message"])
+
+result = metric.score(output='{"status": "success", "data": {}, "message": "OK"}')
+print(result.value)  # 1.0
+print(result.metadata)  # {'valid_json': 1.0, 'has_required_fields': 1.0, 'no_null_values': 1.0}
+```
+
+## Adding Async Support
+
+Implement `ascore()` for asynchronous evaluation:
+
+```python
+from opik.evaluation.metrics import BaseMetric, ScoreResult
+import asyncio
+from typing import Any
+
+class AsyncCustomMetric(BaseMetric):
+    """Custom metric with async support."""
+    
+    def score(self, output: str, **kwargs: Any) -> ScoreResult:
+        # Sync implementation
+        return ScoreResult(value=1.0, name=self.name)
+    
+    async def ascore(self, output: str, **kwargs: Any) -> ScoreResult:
+        # Async implementation
+        await asyncio.sleep(0.1)  # Simulate async operation
+        return ScoreResult(value=1.0, name=self.name)
+
+# Usage
+async def evaluate():
+    metric = AsyncCustomMetric()
+    result = await metric.ascore(output="test")
+    return result
+
+result = asyncio.run(evaluate())
+```
+
+## Using with Evaluations
+
+Custom metrics integrate seamlessly with Opik's evaluation framework:
+
+```python
+from opik import Opik
+from opik.evaluation import evaluate
+
+# Define your custom metric
+metric = WordCountMetric(min_words=10, max_words=50)
+
+# Create evaluation dataset
+dataset = [
+    {"input": "Question 1", "output": "Short answer"},
+    {"input": "Question 2", "output": "This is a much longer answer with more than ten words in it."},
+]
+
+# Run evaluation
+def evaluation_task(item):
+    return {"output": item["output"]}
+
+results = evaluate(
+    dataset=dataset,
+    task=evaluation_task,
+    scoring_metrics=[metric],
+    experiment_name="word-count-evaluation"
+)
+```
+
+## Best Practices
+
+<Tip>
+**Keep metrics focused**: Each metric should evaluate one specific aspect. Combine multiple metrics for comprehensive evaluation.
+</Tip>
+
+<Tip>
+**Provide clear reasons**: Always include a descriptive `reason` in your `ScoreResult` to make results interpretable.
+</Tip>
+
+<Tip>
+**Handle edge cases**: Validate inputs and handle errors gracefully:
+```python
+def score(self, output: str, **kwargs: Any) -> ScoreResult:
+    if not output or not output.strip():
+        return ScoreResult(
+            value=0.0,
+            name=self.name,
+            reason="Empty output",
+            scoring_failed=True
+        )
+    # ... rest of scoring logic
+```
+</Tip>
+
+<Info>
+**Use metadata**: Store additional information in the `metadata` field for debugging and analysis:
+```python
+return ScoreResult(
+    value=0.8,
+    name=self.name,
+    reason="Good response",
+    metadata={
+        "word_count": 42,
+        "sentence_count": 3,
+        "avg_word_length": 5.2
+    }
+)
+```
+</Info>
+
+<Warning>
+**Score range**: Always ensure scores are between 0.0 and 1.0:
+```python
+score = max(0.0, min(1.0, calculated_score))
+```
+</Warning>
+
+## Common Patterns
+
+### Pattern 1: Threshold-Based Scoring
+
+```python
+class ThresholdMetric(BaseMetric):
+    def __init__(self, threshold: float, **kwargs):
+        super().__init__(**kwargs)
+        self.threshold = threshold
+    
+    def score(self, output: str, **kwargs: Any) -> ScoreResult:
+        calculated_value = self._calculate(output)
+        score = 1.0 if calculated_value >= self.threshold else 0.0
+        return ScoreResult(value=score, name=self.name)
+```
+
+### Pattern 2: Weighted Scoring
+
+```python
+class WeightedMetric(BaseMetric):
+    def score(self, output: str, **kwargs: Any) -> ScoreResult:
+        criteria = {
+            "accuracy": (0.5, self._check_accuracy(output)),
+            "completeness": (0.3, self._check_completeness(output)),
+            "clarity": (0.2, self._check_clarity(output)),
+        }
+        
+        total_score = sum(weight * score for weight, score in criteria.values())
+        return ScoreResult(value=total_score, name=self.name)
+```
+
+### Pattern 3: Configurable Validators
+
+```python
+from typing import Callable, List
+
+class ValidatorMetric(BaseMetric):
+    def __init__(
+        self,
+        validators: List[Callable[[str], bool]],
+        **kwargs
+    ):
+        super().__init__(**kwargs)
+        self.validators = validators
+    
+    def score(self, output: str, **kwargs: Any) -> ScoreResult:
+        passed = sum(1 for v in self.validators if v(output))
+        score = passed / len(self.validators)
+        return ScoreResult(value=score, name=self.name)
+```
+
+## Testing Your Metric
+
+Always test your custom metrics:
+
+```python
+import pytest
+from opik.evaluation.metrics import ScoreResult
+
+def test_word_count_metric():
+    metric = WordCountMetric(min_words=5, max_words=10)
+    
+    # Test valid output
+    result = metric.score(output="This has exactly seven words total")
+    assert result.value == 1.0
+    
+    # Test too short
+    result = metric.score(output="Too short")
+    assert result.value == 0.0
+    
+    # Test too long
+    result = metric.score(output=" ".join(["word"] * 15))
+    assert result.value == 0.0
+    
+    # Test edge cases
+    result = metric.score(output="")
+    assert result.value == 0.0
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Metrics Overview" icon="chart-line" href="/metrics/overview">
+    Learn about all available metrics
+  </Card>
+  <Card title="Evaluation Guide" icon="flask" href="/evaluation/overview">
+    Use metrics in evaluations
+  </Card>
+</CardGroup>

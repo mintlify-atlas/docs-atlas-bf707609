@@ -1,0 +1,320 @@
+---
+title: "Haystack Integration"
+description: "Trace Haystack pipelines with Opik's native connector"
+icon: "sitemap"
+---
+
+The Opik Haystack integration provides automatic tracing for Haystack pipelines, capturing component execution, data flow, and LLM calls.
+
+## Installation
+
+Install Opik with Haystack:
+
+```bash
+pip install opik haystack-ai
+```
+
+## Configuration
+
+Enable Haystack content tracing by setting an environment variable:
+
+```bash
+export HAYSTACK_CONTENT_TRACING_ENABLED=true
+```
+
+Or in Python:
+
+```python
+import os
+os.environ["HAYSTACK_CONTENT_TRACING_ENABLED"] = "true"
+```
+
+<Warning>
+  The environment variable must be set **before** importing Haystack components.
+</Warning>
+
+## Quick Start
+
+Add the `OpikConnector` component to your pipeline:
+
+```python
+import os
+os.environ["HAYSTACK_CONTENT_TRACING_ENABLED"] = "true"
+
+from haystack import Pipeline
+from haystack.components.builders import ChatPromptBuilder
+from haystack.components.generators.chat import OpenAIChatGenerator
+from haystack.dataclasses import ChatMessage
+from opik.integrations.haystack import OpikConnector
+
+# Create pipeline
+pipe = Pipeline()
+pipe.add_component("tracer", OpikConnector("Chat Pipeline"))
+pipe.add_component("prompt_builder", ChatPromptBuilder())
+pipe.add_component("llm", OpenAIChatGenerator(model="gpt-4"))
+
+pipe.connect("prompt_builder.prompt", "llm.messages")
+
+# Run pipeline with automatic tracing
+messages = [
+    ChatMessage.from_system("You are a helpful assistant."),
+    ChatMessage.from_user("Tell me about {{topic}}")
+]
+
+response = pipe.run(
+    data={
+        "prompt_builder": {
+            "template_variables": {"topic": "machine learning"},
+            "template": messages
+        }
+    }
+)
+
+print(response["llm"]["replies"][0])
+print(response["tracer"]["trace_url"])  # Link to trace in Opik
+```
+
+## Configuration Options
+
+<ParamField path="name" type="str" required>
+  Name of the pipeline. This appears as the trace name in Opik
+</ParamField>
+
+<ParamField path="project_name" type="str" optional>
+  Name of the Opik project to log traces to. Defaults to the configured default project
+</ParamField>
+
+## OpikConnector Component
+
+The `OpikConnector` is a Haystack component that:
+
+- Does **not** need to be connected to other components
+- Automatically traces all pipeline operations
+- Returns a `trace_url` in the pipeline output
+- Manages trace lifecycle and flushing
+
+```python
+from opik.integrations.haystack import OpikConnector
+
+# Add to pipeline (no connections needed)
+pipe.add_component(
+    "tracer",
+    OpikConnector(
+        name="My Pipeline",
+        project_name="production"
+    )
+)
+```
+
+## Flushing Behavior
+
+By default, Opik flushes trace data after each component execution to ensure data persistence. This blocks until data is sent.
+
+### Disable Auto-Flush
+
+For better performance (with risk of data loss on crashes):
+
+```bash
+export HAYSTACK_OPIK_ENFORCE_FLUSH=false
+```
+
+When disabled, manually flush before program exit:
+
+```python
+from haystack.tracing import tracer
+
+# Run your pipeline
+response = pipe.run(data={...})
+
+# Explicitly flush before exit
+tracer.actual_tracer.flush()
+```
+
+<Warning>
+  Disabling auto-flush may result in data loss if your program crashes before calling `flush()`.
+</Warning>
+
+## What Gets Tracked
+
+The OpikConnector automatically captures:
+
+- **Pipeline Execution**: Complete pipeline runs with inputs and outputs
+- **Components**: Individual component execution and data transformations
+- **LLM Calls**: Model requests, responses, and token usage
+- **Generators**: Text generation from language models
+- **Retrievers**: Document retrieval operations
+- **Embedders**: Embedding generation
+- **Data Flow**: Connections and data passing between components
+
+## Example: RAG Pipeline
+
+```python
+import os
+os.environ["HAYSTACK_CONTENT_TRACING_ENABLED"] = "true"
+
+from haystack import Pipeline, Document
+from haystack.components.retrievers.in_memory import InMemoryBM25Retriever
+from haystack.components.builders import PromptBuilder
+from haystack.components.generators import OpenAIGenerator
+from haystack.document_stores.in_memory import InMemoryDocumentStore
+from opik.integrations.haystack import OpikConnector
+
+# Prepare documents
+documents = [
+    Document(content="Python is a programming language."),
+    Document(content="Haystack is a framework for building LLM applications.")
+]
+
+document_store = InMemoryDocumentStore()
+document_store.write_documents(documents)
+
+# Build RAG pipeline
+pipe = Pipeline()
+pipe.add_component("tracer", OpikConnector("RAG Pipeline", project_name="rag-app"))
+pipe.add_component("retriever", InMemoryBM25Retriever(document_store=document_store))
+pipe.add_component(
+    "prompt_builder",
+    PromptBuilder(
+        template="""Answer the question based on the context.
+        
+        Context:
+        {% for doc in documents %}
+        {{ doc.content }}
+        {% endfor %}
+        
+        Question: {{question}}
+        Answer:"""
+    )
+)
+pipe.add_component("llm", OpenAIGenerator(model="gpt-4"))
+
+pipe.connect("retriever.documents", "prompt_builder.documents")
+pipe.connect("prompt_builder.prompt", "llm.prompt")
+
+# Run with tracing
+result = pipe.run({
+    "retriever": {"query": "What is Haystack?"},
+    "prompt_builder": {"question": "What is Haystack?"}
+})
+
+print(result["llm"]["replies"][0])
+print(f"View trace: {result['tracer']['trace_url']}")
+```
+
+## Example: Multi-Step Pipeline
+
+```python
+import os
+os.environ["HAYSTACK_CONTENT_TRACING_ENABLED"] = "true"
+
+from haystack import Pipeline
+from haystack.components.builders import PromptBuilder
+from haystack.components.generators import OpenAIGenerator
+from opik.integrations.haystack import OpikConnector
+
+pipe = Pipeline()
+pipe.add_component("tracer", OpikConnector("Multi-Step Analysis"))
+
+# Step 1: Extract key points
+pipe.add_component(
+    "extractor_prompt",
+    PromptBuilder(template="Extract key points from: {{text}}")
+)
+pipe.add_component("extractor", OpenAIGenerator(model="gpt-4"))
+
+# Step 2: Summarize
+pipe.add_component(
+    "summarizer_prompt",
+    PromptBuilder(template="Summarize these points: {{points}}")
+)
+pipe.add_component("summarizer", OpenAIGenerator(model="gpt-4"))
+
+pipe.connect("extractor_prompt.prompt", "extractor.prompt")
+pipe.connect("extractor.replies", "summarizer_prompt.points")
+pipe.connect("summarizer_prompt.prompt", "summarizer.prompt")
+
+result = pipe.run({
+    "extractor_prompt": {
+        "text": "Long article text here..."
+    }
+})
+
+print(result["summarizer"]["replies"][0])
+```
+
+## Combining with @track Decorator
+
+```python
+import os
+os.environ["HAYSTACK_CONTENT_TRACING_ENABLED"] = "true"
+
+import opik
+from haystack import Pipeline
+from opik.integrations.haystack import OpikConnector
+
+@opik.track
+def process_query(pipeline: Pipeline, query: str) -> dict:
+    """Process a query through the pipeline."""
+    result = pipeline.run({"query": query})
+    return {
+        "answer": result["llm"]["replies"][0],
+        "trace_url": result["tracer"]["trace_url"]
+    }
+
+# Both the function and pipeline are traced
+response = process_query(pipe, "What is AI?")
+opik.flush_tracker()
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Set Env Early" icon="gear">
+    Set `HAYSTACK_CONTENT_TRACING_ENABLED=true` before importing Haystack to ensure tracing works.
+  </Card>
+  
+  <Card title="Name Your Pipelines" icon="signature">
+    Use descriptive names for `OpikConnector` to easily identify traces in the dashboard.
+  </Card>
+  
+  <Card title="Access Trace URLs" icon="link">
+    Use `response["tracer"]["trace_url"]` to get direct links to traces for debugging.
+  </Card>
+  
+  <Card title="Flush on Exit" icon="database">
+    When auto-flush is disabled, always call `tracer.actual_tracer.flush()` before exit.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="No traces appearing">
+    Verify that:
+    1. `HAYSTACK_CONTENT_TRACING_ENABLED` is set to `"true"` (as string)
+    2. The environment variable was set **before** importing Haystack
+    3. You've added `OpikConnector` to your pipeline
+    4. Auto-flush is enabled or you're calling `flush()` manually
+  </Accordion>
+  
+  <Accordion title="ImportError when using OpikConnector">
+    Make sure you've installed both Opik and Haystack:
+    ```bash
+    pip install opik haystack-ai
+    ```
+  </Accordion>
+  
+  <Accordion title="Missing component traces">
+    The OpikConnector must be added to the pipeline (even if not connected) to enable tracing. Add it with:
+    ```python
+    pipe.add_component("tracer", OpikConnector("Pipeline Name"))
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Reference
+
+For more information:
+- [Haystack Documentation](https://docs.haystack.deepset.ai/)
+- [OpikConnector API](/api-reference/integrations/haystack)
+- [Opik Tracing Guide](/tracing/overview)

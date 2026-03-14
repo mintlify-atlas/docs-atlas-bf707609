@@ -1,0 +1,363 @@
+---
+title: "LLM-as-Judge Metrics"
+description: "Use LLMs to evaluate the quality of AI-generated outputs"
+---
+
+LLM-as-judge metrics use language models to evaluate the quality of LLM outputs. These metrics provide nuanced assessments with detailed reasoning, making them ideal for complex evaluation tasks.
+
+## Available LLM-as-Judge Metrics
+
+### Hallucination
+
+Detects whether an LLM's output contains hallucinated information based on the provided context.
+
+```python
+from opik.evaluation.metrics import Hallucination
+
+metric = Hallucination()
+result = metric.score(
+    input="What is the capital of France?",
+    output="The capital of France is London.",
+    context=["The capital of France is Paris."]
+)
+
+print(result.value)   # 1.0 (hallucination detected)
+print(result.reason)  # "The answer contradicts the context..."
+```
+
+**Parameters:**
+- `model`: LLM to use for evaluation (default: LiteLLM)
+- `name`: Metric name (default: `"hallucination_metric"`)
+- `few_shot_examples`: Custom few-shot examples
+- `track`: Whether to track (default: `True`)
+- `project_name`: Optional project name
+- `seed`: Random seed for reproducibility
+- `temperature`: Sampling temperature
+
+**Score Method:**
+- `input` (str): The original question/input
+- `output` (str): The LLM's output to evaluate
+- `context` (Optional[List[str]]): Context strings for fact-checking
+
+**Returns:** `1.0` if hallucination detected, `0.0` otherwise
+
+### Answer Relevance
+
+Evaluates how well an answer addresses the given question within the provided context.
+
+```python
+from opik.evaluation.metrics import AnswerRelevance
+
+metric = AnswerRelevance()
+result = metric.score(
+    input="What's the capital of France?",
+    output="The capital of France is Paris.",
+    context=["France is a country in Europe."]
+)
+
+print(result.value)  # 0.9 (highly relevant)
+```
+
+**Parameters:**
+- `model`: LLM for evaluation
+- `name`: Metric name (default: `"answer_relevance_metric"`)
+- `few_shot_examples`: Examples with context
+- `few_shot_examples_no_context`: Examples without context
+- `require_context`: Require context to be provided (default: `True`)
+- `track`, `project_name`, `seed`, `temperature`: As above
+
+**Score Method:**
+- `input` (str): The question
+- `output` (str): The answer to evaluate
+- `context` (Optional[List[str]]): Relevant context
+
+**Returns:** Score between `0.0` and `1.0`
+
+<Note>
+To use `AnswerRelevance` without context, set `require_context=False` when initializing.
+</Note>
+
+### Context Precision
+
+Evaluates how well the output aligns with the provided context for the given input.
+
+```python
+from opik.evaluation.metrics import ContextPrecision
+
+metric = ContextPrecision()
+result = metric.score(
+    input="What's the capital of France?",
+    output="The capital of France is Paris.",
+    expected_output="Paris",
+    context=["France is a country in Europe. Its capital is Paris."]
+)
+
+print(result.value)  # 1.0 (perfect precision)
+```
+
+**Score Method:**
+- `input` (str): The question
+- `output` (str): The LLM's answer
+- `expected_output` (str): The correct/expected answer
+- `context` (List[str]): Context strings
+
+**Returns:** Score between `0.0` and `1.0`
+
+### Context Recall
+
+Evaluates how well the output incorporates the provided context.
+
+```python
+from opik.evaluation.metrics import ContextRecall
+
+metric = ContextRecall()
+result = metric.score(
+    input="What's the capital of France?",
+    output="The capital of France is Paris.",
+    expected_output="Paris",
+    context=["France is a country in Europe."]
+)
+
+print(result.value)  # Score between 0.0 and 1.0
+```
+
+**Score Method:**
+- `input` (str): The question
+- `output` (str): The answer
+- `expected_output` (str): Expected answer
+- `context` (List[str]): Context strings
+
+**Returns:** Score between `0.0` and `1.0`
+
+### Moderation
+
+Evaluates whether content is appropriate and safe.
+
+```python
+from opik.evaluation.metrics import Moderation
+
+metric = Moderation()
+result = metric.score(
+    output="Hello, how can I help you?"
+)
+
+print(result.value)  # Score between 0.0 (inappropriate) and 1.0 (appropriate)
+```
+
+**Score Method:**
+- `output` (str): The text to moderate
+
+**Returns:** Score between `0.0` and `1.0` (higher = more appropriate)
+
+### G-Eval
+
+A flexible metric that uses custom prompts to evaluate LLM outputs. Ideal for domain-specific evaluation criteria.
+
+```python
+from opik.evaluation.metrics import GEval
+
+metric = GEval(
+    task_introduction="You are an expert judge evaluating response politeness.",
+    evaluation_criteria="Score from 1 (rude) to 5 (very polite).",
+    model="gpt-4"
+)
+
+result = metric.score(
+    output="Thanks so much for your help!"
+)
+
+print(result.value)  # Normalized score between 0.0 and 1.0
+```
+
+**Parameters:**
+- `task_introduction` (str): Description of the evaluation task
+- `evaluation_criteria` (str): Detailed scoring rubric
+- `model`: LLM to use
+- `name`: Metric name (default: `"g_eval_metric"`)
+- `temperature`: Sampling temperature (default: `0.0`)
+- `seed`: Random seed
+- `track`, `project_name`: As above
+
+**Score Method:**
+- `output` (str): The LLM output to evaluate
+
+**Returns:** Score between `0.0` and `1.0`
+
+### G-Eval Presets
+
+Pre-configured G-Eval metrics for common use cases:
+
+```python
+from opik.evaluation.metrics import (
+    QARelevanceJudge,
+    SummarizationCoherenceJudge,
+    DialogueHelpfulnessJudge,
+    GenderBiasJudge,
+    ComplianceRiskJudge,
+)
+
+# QA relevance evaluation
+qa_judge = QARelevanceJudge(model="gpt-4")
+result = qa_judge.score(output="Paris is the capital of France.")
+
+# Summarization coherence
+summary_judge = SummarizationCoherenceJudge()
+result = summary_judge.score(output="The article discusses AI trends...")
+
+# Bias detection
+bias_judge = GenderBiasJudge()
+result = bias_judge.score(output="All nurses are women.")
+```
+
+**Available Presets:**
+- `QARelevanceJudge`: Evaluate question-answer relevance
+- `DialogueHelpfulnessJudge`: Assess dialogue helpfulness
+- `SummarizationCoherenceJudge`: Evaluate summary coherence
+- `SummarizationConsistencyJudge`: Check summary consistency
+- `GenderBiasJudge`: Detect gender bias
+- `PoliticalBiasJudge`: Detect political bias
+- `DemographicBiasJudge`: Detect demographic bias
+- `ReligiousBiasJudge`: Detect religious bias
+- `RegionalBiasJudge`: Detect regional bias
+- `ComplianceRiskJudge`: Assess compliance risks
+- `PromptUncertaintyJudge`: Evaluate prompt uncertainty
+- `AgentTaskCompletionJudge`: Assess agent task completion
+- `AgentToolCorrectnessJudge`: Evaluate agent tool usage
+
+### Additional Metrics
+
+#### Trajectory Accuracy
+
+Evaluates the quality of agent trajectories (ReAct-style chains).
+
+```python
+from opik.evaluation.metrics import TrajectoryAccuracy
+
+metric = TrajectoryAccuracy()
+result = metric.score(
+    goal="Find the weather in Paris",
+    trajectory=[
+        {
+            "thought": "I need to search for weather in Paris",
+            "action": "search_weather(location='Paris')",
+            "observation": "Found: 22°C, sunny"
+        }
+    ],
+    final_result="The weather in Paris is 22°C and sunny"
+)
+```
+
+#### Structured Output Compliance
+
+Evaluates whether output matches a JSON schema.
+
+```python
+from opik.evaluation.metrics import StructuredOutputCompliance
+
+metric = StructuredOutputCompliance()
+result = metric.score(
+    output='{"name": "Alice", "age": 30}',
+    schema='{"type": "object", "properties": {"name": {"type": "string"}, "age": {"type": "integer"}}}'
+)
+```
+
+#### SycEval
+
+Detects sycophantic behavior in LLM outputs.
+
+```python
+from opik.evaluation.metrics import SycEval
+
+metric = SycEval(
+    model="gpt-4",
+    rebuttal_model="gpt-3.5-turbo",
+    rebuttal_type="simple",
+    context_mode="in_context"
+)
+
+result = metric.score(
+    input="What is the square root of 16?",
+    output="5",  # Intentionally wrong
+    ground_truth="4"
+)
+```
+
+## Configuring the Judge Model
+
+You can use different LLMs as judges:
+
+### Using Model Names
+
+```python
+# OpenAI models
+metric = Hallucination(model="gpt-4")
+
+# Anthropic models
+metric = Hallucination(model="claude-3-opus-20240229")
+
+# Local models via Ollama
+metric = Hallucination(model="ollama/llama3")
+```
+
+### Using Custom Models
+
+```python
+from opik.evaluation.models import OpikBaseModel
+
+class MyCustomModel(OpikBaseModel):
+    def generate_string(self, input: str, **kwargs) -> str:
+        # Your custom implementation
+        pass
+
+metric = Hallucination(model=MyCustomModel())
+```
+
+## Few-Shot Examples
+
+Many metrics support custom few-shot examples to improve evaluation quality:
+
+```python
+from opik.evaluation.metrics.llm_judges.hallucination import (
+    template,
+)
+
+custom_examples = [
+    template.FewShotExampleHallucination(
+        input="Example question",
+        output="Example answer",
+        context=["Example context"],
+        score=0.0,
+        reason="Example reasoning"
+    )
+]
+
+metric = Hallucination(few_shot_examples=custom_examples)
+```
+
+## Best Practices
+
+<Warning>
+LLM-as-judge metrics require API calls to language models, which can be slower and more expensive than heuristic metrics. Consider using caching or batching for large evaluations.
+</Warning>
+
+<Tip>
+For reproducible results, set both `temperature=0.0` and a fixed `seed` value:
+```python
+metric = Hallucination(temperature=0.0, seed=42)
+```
+</Tip>
+
+<Info>
+LLM-as-judge metrics provide a `reason` field explaining the score. Use this to understand and debug evaluation results.
+</Info>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Heuristic Metrics" icon="calculator" href="/metrics/heuristic-metrics">
+    Explore faster, deterministic metrics
+  </Card>
+  <Card title="Custom Metrics" icon="code" href="/metrics/custom-metrics">
+    Build your own evaluation metrics
+  </Card>
+</CardGroup>

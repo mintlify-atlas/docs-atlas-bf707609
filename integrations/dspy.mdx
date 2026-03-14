@@ -1,0 +1,332 @@
+---
+title: "DSPy Integration"
+description: "Trace DSPy modules and optimize prompts with Opik"
+icon: "wand-magic-sparkles"
+---
+
+The Opik DSPy integration enables automatic tracing of DSPy modules, language model calls, and optimization processes.
+
+## Installation
+
+Install Opik with DSPy:
+
+```bash
+pip install opik dspy
+```
+
+## Quick Start
+
+Use the `OpikCallback` to trace DSPy operations:
+
+```python
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+# Configure DSPy language model
+lm = dspy.LM(model="openai/gpt-4o-mini", cache=False)
+dspy.configure(lm=lm)
+
+# Set up Opik callback
+opik_callback = OpikCallback(project_name="dspy-app")
+dspy.settings.configure(callbacks=[opik_callback])
+
+# Create and run a DSPy module
+cot = dspy.ChainOfThought("question -> answer")
+response = cot(question="What is the meaning of life?")
+
+# Flush to send traces
+opik_callback.flush()
+print(response)
+```
+
+## Configuration Options
+
+<ParamField path="project_name" type="str" optional>
+  Name of the Opik project to log traces to
+</ParamField>
+
+<ParamField path="log_graph" type="bool" default="false">
+  If `true`, logs a Mermaid diagram visualization of module execution flow
+</ParamField>
+
+## Logging Execution Graphs
+
+Visualize DSPy module execution with Mermaid diagrams:
+
+```python
+from opik.integrations.dspy import OpikCallback
+
+opik_callback = OpikCallback(
+    project_name="dspy-graphs",
+    log_graph=True  # Enable graph logging
+)
+
+dspy.settings.configure(callbacks=[opik_callback])
+```
+
+The graph appears in the trace metadata, showing the flow of modules and predictors.
+
+## What Gets Tracked
+
+The OpikCallback automatically captures:
+
+- **Modules**: DSPy module execution (ChainOfThought, ReAct, etc.)
+- **Predictors**: Predict and ChainOfThought operations
+- **LM Calls**: Language model requests and responses
+- **Token Usage**: Prompt tokens, completion tokens, and costs
+- **Inputs/Outputs**: Module inputs and generated outputs
+- **Execution Flow**: Mermaid graphs when `log_graph=True`
+
+## Example: Chain of Thought
+
+```python
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+# Configure LM
+lm = dspy.LM(
+    model="openai/gpt-4o-mini",
+    temperature=0.7,
+    cache=False
+)
+dspy.configure(lm=lm)
+
+# Set up tracing
+opik_callback = OpikCallback(
+    project_name="cot-examples",
+    log_graph=True
+)
+dspy.settings.configure(callbacks=[opik_callback])
+
+# Define signature and module
+class AnalyzeText(dspy.Signature):
+    """Analyze text and extract insights."""
+    text: str = dspy.InputField()
+    insights: str = dspy.OutputField(desc="Key insights from the text")
+
+cot = dspy.ChainOfThought(AnalyzeText)
+
+# Execute
+result = cot(
+    text="Artificial intelligence is transforming how we work and live."
+)
+
+opik_callback.flush()
+print(result.insights)
+```
+
+## Example: Multi-Hop Reasoning
+
+```python
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+lm = dspy.LM(model="openai/gpt-4o", cache=False)
+dspy.configure(lm=lm)
+
+opik_callback = OpikCallback(project_name="multi-hop")
+dspy.settings.configure(callbacks=[opik_callback])
+
+class GenerateQuery(dspy.Signature):
+    """Generate a search query."""
+    question: str = dspy.InputField()
+    query: str = dspy.OutputField()
+
+class GenerateAnswer(dspy.Signature):
+    """Generate answer from context."""
+    context: str = dspy.InputField()
+    question: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+
+class MultiHopQA(dspy.Module):
+    def __init__(self):
+        super().__init__()
+        self.generate_query = dspy.ChainOfThought(GenerateQuery)
+        self.generate_answer = dspy.ChainOfThought(GenerateAnswer)
+    
+    def forward(self, question):
+        query = self.generate_query(question=question).query
+        # Simulate retrieval
+        context = f"Retrieved context for: {query}"
+        answer = self.generate_answer(context=context, question=question).answer
+        return dspy.Prediction(answer=answer, query=query)
+
+qa_system = MultiHopQA()
+result = qa_system(question="How does photosynthesis work?")
+
+opik_callback.flush()
+print(f"Query: {result.query}")
+print(f"Answer: {result.answer}")
+```
+
+## Combining with @track Decorator
+
+Combine DSPy tracing with Opik's `@track` decorator:
+
+```python
+import opik
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+lm = dspy.LM(model="openai/gpt-4o-mini", cache=False)
+dspy.configure(lm=lm)
+
+opik_callback = OpikCallback()
+dspy.settings.configure(callbacks=[opik_callback])
+
+@opik.track
+def process_questions(questions: list[str]) -> list[str]:
+    """Process multiple questions with DSPy."""
+    cot = dspy.ChainOfThought("question -> answer")
+    answers = []
+    
+    for q in questions:
+        result = cot(question=q)
+        answers.append(result.answer)
+    
+    return answers
+
+# Both the function and DSPy modules are traced
+results = process_questions([
+    "What is machine learning?",
+    "What is deep learning?"
+])
+
+opik_callback.flush()
+opik.flush_tracker()
+```
+
+## Integration with Opik Context
+
+The DSPy callback respects Opik's context system:
+
+```python
+import opik
+from opik.integrations.dspy import OpikCallback
+import dspy
+
+lm = dspy.LM(model="openai/gpt-4o-mini", cache=False)
+dspy.configure(lm=lm)
+
+opik_callback = OpikCallback()
+dspy.settings.configure(callbacks=[opik_callback])
+
+@opik.track
+def analyze_with_context(text: str) -> dict:
+    """DSPy operations will be nested under this trace."""
+    cot = dspy.ChainOfThought("text -> summary")
+    result = cot(text=text)
+    return {"summary": result.summary}
+
+# DSPy traces appear as spans under the @track trace
+analysis = analyze_with_context("Long text here...")
+opik_callback.flush()
+```
+
+## Token Usage and Costs
+
+Token usage and costs are automatically extracted from DSPy's LM history:
+
+```python
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+lm = dspy.LM(model="openai/gpt-4o", cache=False)
+dspy.configure(lm=lm)
+
+opik_callback = OpikCallback(project_name="cost-tracking")
+dspy.settings.configure(callbacks=[opik_callback])
+
+cot = dspy.ChainOfThought("question -> answer")
+result = cot(question="Explain quantum computing")
+
+opik_callback.flush()
+# View token usage and costs in Opik dashboard
+```
+
+Usage information includes:
+- Prompt tokens
+- Completion tokens
+- Total tokens
+- Estimated cost (when available)
+
+## Error Handling
+
+Errors during DSPy execution are automatically captured:
+
+```python
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+lm = dspy.LM(
+    model="openai/gpt-3.5-turbo",
+    api_key="invalid-key",  # This will cause an error
+    cache=False
+)
+dspy.configure(lm=lm)
+
+opik_callback = OpikCallback(project_name="error-tracking")
+dspy.settings.configure(callbacks=[opik_callback])
+
+cot = dspy.ChainOfThought("question -> answer")
+
+try:
+    result = cot(question="What is AI?")
+except Exception as e:
+    print(f"Error occurred: {e}")
+    # Error details are logged to Opik
+finally:
+    opik_callback.flush()
+```
+
+## Best Practices
+
+<CardGroup cols={2}>
+  <Card title="Disable Caching" icon="ban">
+    Set `cache=False` when configuring LM to ensure all calls are traced accurately.
+  </Card>
+  
+  <Card title="Enable Graphs" icon="diagram-project">
+    Use `log_graph=True` during development to visualize module execution flow.
+  </Card>
+  
+  <Card title="Flush Explicitly" icon="database">
+    Always call `opik_callback.flush()` to ensure traces are sent before program exit.
+  </Card>
+  
+  <Card title="Use Project Names" icon="folder">
+    Organize experiments with descriptive project names for easy filtering.
+  </Card>
+</CardGroup>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Traces not appearing">
+    Make sure to:
+    1. Call `opik_callback.flush()` before script exits
+    2. Configure the callback with `dspy.settings.configure(callbacks=[opik_callback])`
+    3. Check that Opik is properly configured (`opik configure`)
+  </Accordion>
+  
+  <Accordion title="Missing token usage">
+    Token usage is extracted from DSPy's LM history. Ensure:
+    1. You're using a supported LM provider (OpenAI, Anthropic, etc.)
+    2. The LM returns usage information in responses
+    3. Cache is disabled (`cache=False`) to capture all calls
+  </Accordion>
+  
+  <Accordion title="Graph not appearing in metadata">
+    Verify that `log_graph=True` is set when creating the OpikCallback:
+    ```python
+    opik_callback = OpikCallback(log_graph=True)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Reference
+
+For more information:
+- [DSPy Documentation](https://dspy-docs.vercel.app/)
+- [OpikCallback API](/api-reference/integrations/dspy)
+- [Opik Tracing Guide](/tracing/overview)

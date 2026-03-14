@@ -1,122 +1,201 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "mint",
-  "name": "Mint Starter Kit",
+  "name": "Opik",
+  "theme": "aspen",
   "colors": {
-    "primary": "#16A34A",
-    "light": "#07C983",
-    "dark": "#15803D"
+    "primary": "#fcd10f",
+    "light": "#faf3e6",
+    "dark": "#d53c3e"
   },
-  "favicon": "/favicon.svg",
+
+  "logo": {
+    "light": "https://media.brand.dev/1e9e07f4-647f-41fe-bd17-0c9a690394a1.png",
+    "dark": "https://media.brand.dev/1e9e07f4-647f-41fe-bd17-0c9a690394a1.png"
+  },
+  "navbar": {
+    "primary": {
+      "type": "github",
+      "href": "https://github.com/comet-ml/opik"
+    }
+  },
+  "footer": {
+    "socials": {
+      "github": "https://github.com/comet-ml/opik",
+      "x": "https://x.com/Cometml",
+      "slack": "https://chat.comet.com"
+    }
+  },
   "navigation": {
     "tabs": [
       {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
-            "group": "Getting started",
+            "group": "Get Started",
             "pages": [
-              "index",
+              "introduction",
               "quickstart",
-              "development"
+              "installation"
             ]
           },
           {
-            "group": "Customization",
+            "group": "Tracing & Observability",
             "pages": [
-              "essentials/settings",
-              "essentials/navigation"
+              "tracing/overview",
+              "tracing/log-traces",
+              "tracing/integrations",
+              "tracing/track-decorator",
+              "tracing/annotate-traces",
+              "tracing/attachments"
             ]
           },
           {
-            "group": "Writing content",
+            "group": "Evaluation & Testing",
             "pages": [
-              "essentials/markdown",
-              "essentials/code",
-              "essentials/images",
-              "essentials/reusable-snippets"
+              "evaluation/overview",
+              "evaluation/datasets",
+              "evaluation/experiments",
+              "evaluation/metrics",
+              "evaluation/pytest-integration"
             ]
           },
           {
-            "group": "AI tools",
+            "group": "Metrics",
             "pages": [
-              "ai-tools/cursor",
-              "ai-tools/claude-code",
-              "ai-tools/windsurf"
+              "metrics/overview",
+              "metrics/llm-as-judge",
+              "metrics/heuristic-metrics",
+              "metrics/custom-metrics"
+            ]
+          },
+          {
+            "group": "Production Features",
+            "pages": [
+              "production/monitoring",
+              "production/dashboards",
+              "production/online-evaluation",
+              "production/feedback-scores"
+            ]
+          },
+          {
+            "group": "Advanced Features",
+            "pages": [
+              "advanced/prompt-playground",
+              "advanced/agent-optimizer",
+              "advanced/guardrails",
+              "advanced/prompt-management",
+              "advanced/annotation-queues"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/cloud",
+              "deployment/docker-compose",
+              "deployment/kubernetes"
             ]
           }
         ]
       },
       {
-        "tab": "API reference",
+        "tab": "SDK Reference",
         "groups": [
           {
-            "group": "API documentation",
+            "group": "Python SDK",
             "pages": [
-              "api-reference/introduction"
+              "sdk/python/overview",
+              "sdk/python/installation",
+              "sdk/python/configuration",
+              "sdk/python/client",
+              "sdk/python/tracing",
+              "sdk/python/evaluation",
+              "sdk/python/datasets",
+              "sdk/python/experiments"
             ]
           },
           {
-            "group": "Endpoint examples",
+            "group": "TypeScript SDK",
             "pages": [
-              "api-reference/endpoint/get",
-              "api-reference/endpoint/create",
-              "api-reference/endpoint/delete",
-              "api-reference/endpoint/webhook"
+              "sdk/typescript/overview",
+              "sdk/typescript/installation",
+              "sdk/typescript/configuration",
+              "sdk/typescript/client",
+              "sdk/typescript/tracing",
+              "sdk/typescript/evaluation"
+            ]
+          },
+          {
+            "group": "Optimizer SDK",
+            "pages": [
+              "sdk/optimizer/overview",
+              "sdk/optimizer/installation",
+              "sdk/optimizer/agents",
+              "sdk/optimizer/algorithms"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Integrations",
+        "groups": [
+          {
+            "group": "LLM Providers",
+            "pages": [
+              "integrations/openai",
+              "integrations/anthropic",
+              "integrations/gemini",
+              "integrations/bedrock",
+              "integrations/litellm",
+              "integrations/ollama"
+            ]
+          },
+          {
+            "group": "Frameworks",
+            "pages": [
+              "integrations/langchain",
+              "integrations/llama-index",
+              "integrations/haystack",
+              "integrations/dspy",
+              "integrations/crewai"
+            ]
+          },
+          {
+            "group": "Agent Frameworks",
+            "pages": [
+              "integrations/adk",
+              "integrations/openai-agents",
+              "integrations/pydantic-ai",
+              "integrations/smolagents"
+            ]
+          },
+          {
+            "group": "Other Integrations",
+            "pages": [
+              "integrations/overview",
+              "integrations/opentelemetry",
+              "integrations/guardrails-ai"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "REST API",
+            "pages": [
+              "api/overview",
+              "api/authentication",
+              "api/traces",
+              "api/datasets",
+              "api/experiments",
+              "api/feedback-scores",
+              "api/prompts"
             ]
           }
         ]
       }
-    ],
-    "global": {
-      "anchors": [
-        {
-          "anchor": "Documentation",
-          "href": "https://mintlify.com/docs",
-          "icon": "book-open-cover"
-        },
-        {
-          "anchor": "Blog",
-          "href": "https://mintlify.com/blog",
-          "icon": "newspaper"
-        }
-      ]
-    }
-  },
-  "logo": {
-    "light": "/logo/light.svg",
-    "dark": "/logo/dark.svg"
-  },
-  "navbar": {
-    "links": [
-      {
-        "label": "Support",
-        "href": "mailto:hi@mintlify.com"
-      }
-    ],
-    "primary": {
-      "type": "button",
-      "label": "Dashboard",
-      "href": "https://dashboard.mintlify.com"
-    }
-  },
-  "contextual": {
-    "options": [
-     "copy",
-     "view",
-     "chatgpt",
-     "claude",
-     "perplexity",
-     "mcp",
-     "cursor",
-     "vscode"
-   ]
-  },
-  "footer": {
-    "socials": {
-      "x": "https://x.com/mintlify",
-      "github": "https://github.com/mintlify",
-      "linkedin": "https://linkedin.com/company/mintlify"
-    }
+    ]
   }
 }

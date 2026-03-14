@@ -1,0 +1,584 @@
+---
+title: "Integrations"
+description: "Automatically trace LLM calls and framework operations with Opik integrations"
+---
+
+Opik provides seamless integrations with popular LLM providers and frameworks. These integrations automatically create traces and spans without requiring manual instrumentation.
+
+## Supported Integrations
+
+Opik supports automatic tracing for:
+
+<CardGroup cols={3}>
+  <Card title="OpenAI" icon="openai" href="#openai">
+    GPT models and assistants
+  </Card>
+  
+  <Card title="Anthropic" icon="robot" href="#anthropic">
+    Claude models
+  </Card>
+  
+  <Card title="LangChain" icon="link" href="#langchain">
+    Chains, agents, and tools
+  </Card>
+  
+  <Card title="LlamaIndex" icon="list" href="#llamaindex">
+    Query engines and agents
+  </Card>
+  
+  <Card title="LiteLLM" icon="layer-group" href="#litellm">
+    Unified LLM interface
+  </Card>
+  
+  <Card title="Bedrock" icon="aws" href="#aws-bedrock">
+    AWS Bedrock models
+  </Card>
+  
+  <Card title="Google AI" icon="google" href="#google-ai">
+    Gemini models
+  </Card>
+  
+  <Card title="Haystack" icon="search" href="#haystack">
+    Pipelines and components
+  </Card>
+  
+  <Card title="DSPy" icon="code" href="#dspy">
+    DSPy modules and optimizers
+  </Card>
+</CardGroup>
+
+## OpenAI
+
+Automatically trace OpenAI API calls including chat completions, completions, and embeddings.
+
+### Installation
+
+```bash
+pip install opik openai
+```
+
+### Basic Usage
+
+```python
+import opik
+from openai import OpenAI
+
+# Wrap the OpenAI client
+client = opik.integrations.openai(OpenAI())
+
+# All calls are automatically traced
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": "What is machine learning?"}
+    ]
+)
+
+print(response.choices[0].message.content)
+```
+
+### Streaming Support
+
+Streaming responses are automatically tracked:
+
+```python
+import opik
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+stream = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True
+)
+
+for chunk in stream:
+    if chunk.choices[0].delta.content:
+        print(chunk.choices[0].delta.content, end="")
+```
+
+### Async Support
+
+```python
+import opik
+import asyncio
+from openai import AsyncOpenAI
+
+client = opik.integrations.openai(AsyncOpenAI())
+
+async def main():
+    response = await client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": "Hello!"}]
+    )
+    print(response.choices[0].message.content)
+
+asyncio.run(main())
+```
+
+### Combining with @track
+
+```python
+import opik
+from opik import track
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+@track
+def rag_pipeline(question):
+    # Retrieval step (custom tracked function)
+    context = retrieve_documents(question)
+    
+    # Generation step (automatically tracked OpenAI call)
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": f"Context: {context}"},
+            {"role": "user", "content": question}
+        ]
+    )
+    
+    return response.choices[0].message.content
+
+@track(type="tool")
+def retrieve_documents(query):
+    # Your retrieval logic
+    return ["doc1", "doc2"]
+
+result = rag_pipeline("What is Opik?")
+```
+
+## Anthropic
+
+Automatically trace Claude model calls.
+
+### Installation
+
+```bash
+pip install opik anthropic
+```
+
+### Usage
+
+```python
+import opik
+import anthropic
+
+# Wrap the Anthropic client
+client = opik.integrations.anthropic(anthropic.Anthropic())
+
+response = client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    messages=[
+        {"role": "user", "content": "Explain quantum computing"}
+    ]
+)
+
+print(response.content[0].text)
+```
+
+### Streaming
+
+```python
+import opik
+import anthropic
+
+client = opik.integrations.anthropic(anthropic.Anthropic())
+
+with client.messages.stream(
+    model="claude-3-5-sonnet-20241022",
+    max_tokens=1024,
+    messages=[{"role": "user", "content": "Write a poem"}]
+) as stream:
+    for text in stream.text_stream:
+        print(text, end="", flush=True)
+```
+
+## LangChain
+
+Trace LangChain chains, agents, and retrievers automatically.
+
+### Installation
+
+```bash
+pip install opik langchain langchain-openai
+```
+
+### Using OpikTracer Callback
+
+```python
+import opik
+from langchain_openai import ChatOpenAI
+from langchain.schema import HumanMessage
+from opik.integrations.langchain import OpikTracer
+
+# Initialize tracer
+opik_tracer = OpikTracer()
+
+# Create LLM with callback
+llm = ChatOpenAI(
+    model="gpt-4",
+    callbacks=[opik_tracer]
+)
+
+# All LLM calls are traced
+response = llm.invoke([HumanMessage(content="Hello, AI!")])
+print(response.content)
+```
+
+### With Chains
+
+```python
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain_openai import ChatOpenAI
+from opik.integrations.langchain import OpikTracer
+
+opik_tracer = OpikTracer()
+
+prompt = PromptTemplate(
+    input_variables=["product"],
+    template="What is a good name for a company that makes {product}?"
+)
+
+llm = ChatOpenAI(model="gpt-4")
+chain = LLMChain(llm=llm, prompt=prompt, callbacks=[opik_tracer])
+
+result = chain.invoke({"product": "eco-friendly shoes"})
+print(result)
+```
+
+### With Agents
+
+```python
+from langchain.agents import AgentExecutor, create_openai_functions_agent
+from langchain.tools import tool
+from langchain_openai import ChatOpenAI
+from langchain import hub
+from opik.integrations.langchain import OpikTracer
+
+opik_tracer = OpikTracer()
+
+@tool
+def get_word_length(word: str) -> int:
+    """Returns the length of a word."""
+    return len(word)
+
+tools = [get_word_length]
+llm = ChatOpenAI(model="gpt-4")
+prompt = hub.pull("hwchase17/openai-functions-agent")
+
+agent = create_openai_functions_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    callbacks=[opik_tracer],
+    verbose=True
+)
+
+result = agent_executor.invoke(
+    {"input": "How many letters are in the word 'intelligence'?"}
+)
+print(result)
+```
+
+## LlamaIndex
+
+Trace LlamaIndex query engines and agents.
+
+### Installation
+
+```bash
+pip install opik llama-index
+```
+
+### Usage
+
+```python
+import opik
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
+from llama_index.core.settings import Settings
+from llama_index.core.callbacks import CallbackManager
+from opik.integrations.llama_index import OpikCallbackHandler
+
+# Initialize Opik callback
+opik_callback = OpikCallbackHandler()
+Settings.callback_manager = CallbackManager([opik_callback])
+
+# Load documents and create index
+documents = SimpleDirectoryReader("./data").load_data()
+index = VectorStoreIndex.from_documents(documents)
+
+# Query the index (automatically traced)
+query_engine = index.as_query_engine()
+response = query_engine.query("What is the main topic?")
+print(response)
+```
+
+## LiteLLM
+
+Trace any LLM provider supported by LiteLLM.
+
+### Installation
+
+```bash
+pip install opik litellm
+```
+
+### Usage
+
+```python
+import opik
+from litellm import completion
+
+# Enable Opik integration
+opik.integrations.litellm()
+
+# Call any LLM provider
+response = completion(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+
+print(response.choices[0].message.content)
+
+# Works with other providers too
+response = completion(
+    model="claude-3-5-sonnet-20241022",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+## AWS Bedrock
+
+Trace AWS Bedrock model calls.
+
+### Installation
+
+```bash
+pip install opik boto3
+```
+
+### Usage
+
+```python
+import opik
+import boto3
+
+# Create Bedrock client
+bedrock = boto3.client('bedrock-runtime', region_name='us-east-1')
+
+# Wrap with Opik
+client = opik.integrations.bedrock(bedrock)
+
+# Invoke model (automatically traced)
+response = client.invoke_model(
+    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    body=json.dumps({
+        "anthropic_version": "bedrock-2023-05-31",
+        "messages": [{"role": "user", "content": "Hello"}],
+        "max_tokens": 1000
+    })
+)
+```
+
+## Google AI
+
+Trace Google's Gemini models.
+
+### Installation
+
+```bash
+pip install opik google-generativeai
+```
+
+### Usage
+
+```python
+import opik
+import google.generativeai as genai
+
+# Configure API key
+genai.configure(api_key="your-api-key")
+
+# Wrap the client
+client = opik.integrations.google_genai(genai)
+
+# Generate content (automatically traced)
+model = client.GenerativeModel('gemini-1.5-pro')
+response = model.generate_content("Explain AI")
+print(response.text)
+```
+
+## Haystack
+
+Trace Haystack pipelines and components.
+
+### Installation
+
+```bash
+pip install opik haystack-ai
+```
+
+### Usage
+
+```python
+import opik
+from haystack import Pipeline
+from haystack.components.generators import OpenAIGenerator
+from opik.integrations.haystack import OpikConnector
+
+# Create pipeline
+pipeline = Pipeline()
+pipeline.add_component("llm", OpenAIGenerator(model="gpt-4"))
+
+# Add Opik tracer
+opik_connector = OpikConnector("My Pipeline")
+pipeline.connect("llm.replies", "opik_connector.values")
+pipeline.add_component("opik_connector", opik_connector)
+
+# Run pipeline (automatically traced)
+result = pipeline.run({"llm": {"prompt": "What is AI?"}})
+```
+
+## DSPy
+
+Trace DSPy modules and programs.
+
+### Installation
+
+```bash
+pip install opik dspy-ai
+```
+
+### Usage
+
+```python
+import opik
+import dspy
+from opik.integrations.dspy import OpikCallback
+
+# Configure DSPy
+llm = dspy.OpenAI(model="gpt-4")
+dspy.settings.configure(lm=llm)
+
+# Add Opik callback
+opik_callback = OpikCallback()
+dspy.settings.configure(callbacks=[opik_callback])
+
+# Define and use DSPy program
+class SimpleQA(dspy.Signature):
+    """Answer questions with short factoid answers."""
+    question = dspy.InputField()
+    answer = dspy.OutputField(desc="short answer")
+
+generate_answer = dspy.Predict(SimpleQA)
+response = generate_answer(question="What is the capital of France?")
+print(response.answer)
+```
+
+## Integration Options
+
+Most integrations support configuration options:
+
+```python
+import opik
+from openai import OpenAI
+
+client = opik.integrations.openai(
+    OpenAI(),
+    project_name="my-project",           # Project to log traces
+    tags=["production", "v1"],          # Default tags
+    metadata={"environment": "prod"}    # Default metadata
+)
+```
+
+## Combining Integrations with @track
+
+Integrations work seamlessly with the `@track` decorator:
+
+```python
+import opik
+from opik import track
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+@track
+def multi_step_pipeline(user_query):
+    # Step 1: Intent classification (traced)
+    intent = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": f"Classify: {user_query}"}]
+    )
+    
+    # Step 2: Custom logic (traced)
+    context = fetch_context(intent.choices[0].message.content)
+    
+    # Step 3: Response generation (traced)
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": f"Answer using {context}: {user_query}"}]
+    )
+    
+    return response.choices[0].message.content
+
+@track(type="tool")
+def fetch_context(intent):
+    # Your context retrieval logic
+    return "relevant context"
+```
+
+## Disabling Integration Tracing
+
+You can temporarily disable tracing:
+
+```python
+import opik
+from opik import set_tracing_active
+from openai import OpenAI
+
+client = opik.integrations.openai(OpenAI())
+
+# Disable tracing
+set_tracing_active(False)
+
+# This call won't be traced
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+
+# Re-enable tracing
+set_tracing_active(True)
+
+# This call will be traced
+response = client.chat.completions.create(
+    model="gpt-4",
+    messages=[{"role": "user", "content": "Hello again"}]
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Track Decorator" icon="at" href="/tracing/track-decorator">
+    Learn about the @track decorator
+  </Card>
+  
+  <Card title="Log Traces" icon="file-lines" href="/tracing/log-traces">
+    Create traces manually
+  </Card>
+  
+  <Card title="Annotate Traces" icon="pen" href="/tracing/annotate-traces">
+    Add feedback scores
+  </Card>
+  
+  <Card title="Overview" icon="book" href="/tracing/overview">
+    Back to tracing overview
+  </Card>
+</CardGroup>
